@@ -24,7 +24,7 @@ with open(file_path, mode='w', newline='') as file:
     writer.writerow(["ID_Number", "Full_Name", "Role", "Email", "Phone"])
     
     # Generate 50 rows
-    for i in range(1, 51):
+    for i in range(51, 101):
         # Format ID as 2024-001, 2024-002, etc.
         student_id = f"2024-{i:03d}"
         

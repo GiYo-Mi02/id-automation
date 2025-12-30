@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rimberio Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #121212; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
+        .card { background: #1e1e1e; border: 1px solid #333; color: white; margin-bottom: 20px; }
+        .card-header { border-bottom: 1px solid #333; font-weight: bold; text-transform: uppercase; color: #C41E3A; }
+        .btn-primary { background: #C41E3A; border: none; }
+        .btn-primary:hover { background: #a01830; }
+
+        /* ID Preview */
+        .id-preview-box { display: flex; gap: 10px; justify-content: center; background: #000; padding: 20px; border-radius: 8px; flex-wrap: wrap; min-height: 320px; align-items: center; }
+        .id-preview-box img { height: 300px; border-radius: 8px; border: 1px solid #444; object-fit: contain; box-shadow: 0 4px 8px rgba(0,0,0,0.5); }
+        
+        /* Template Grid */
+        .template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
+        .template-item { cursor: pointer; border: 2px solid transparent; padding: 5px; border-radius: 4px; text-align: center; }
+        .template-item:hover { background: #333; }
+        .template-item.active { border-color: #0d6efd; background: #0d6efd20; }
+        .template-item img { width: 100%; height: auto; border-radius: 4px; }
+        .template-item small { display: block; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
+
+        /* Table */
+        table { width: 100%; color: #ccc; }
+        thead { background: #2c2c2c; }
+        td, th { padding: 10px; border-bottom: 1px solid #333; }
+        tr:hover { background: #252525; }
+        
+        /* Modal Inputs */
+        .form-control.bg-secondary { background-color: #2d2d2d !important; border-color: #444; color: white !important; }
+        .form-control::placeholder { color: #888; }
+    </style>
+</head>
+<body class="p-4">
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>🛠️ Rimberio Dashboard</h1>
+        <div>
+            <a href="/" class="btn btn-outline-light me-2">📸 Go to Capture</a>
+            <a href="/editor" class="btn btn-outline-info">🎨 Visual Editor</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">Front Templates</div>
+                <div class="card-body">
+                    <div class="template-grid" id="frontTemplateList"></div>
+                    <div class="mt-3">
+                        <input type="file" id="uploadFront" class="form-control form-control-sm bg-secondary text-white" accept="image/png">
+                        <button onclick="uploadTemplate('front')" class="btn btn-sm btn-secondary mt-2 w-100">Upload New Front</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">Back Templates</div>
+                <div class="card-body">
+                    <div class="template-grid" id="backTemplateList"></div>
+                    <div class="mt-3">
+                        <input type="file" id="uploadBack" class="form-control form-control-sm bg-secondary text-white" accept="image/png">
+                        <button onclick="uploadTemplate('back')" class="btn btn-sm btn-secondary mt-2 w-100">Upload New Back</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <span>Latest Generated ID</span>
+                    <button onclick="forceRefreshPreview()" class="btn btn-sm btn-success">Force Refresh</button>
+                </div>
+                <div class="card-body text-center">
+                    <div class="id-preview-box" id="livePreview">
+                        <div class="text-muted">Waiting for generation...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header d-flex justify-content-between">
+                    <span>History / Logs</span>
+                    <button onclick="loadHistory()" class="btn btn-sm btn-outline-light">Refresh Table</button>
+                </div>
+                <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-dark table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-white">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Edit Student Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                
+                <h6 class="text-info border-bottom border-secondary pb-1">Front of ID</h6>
+                <div class="mb-2">
+                    <label>Full Name</label>
+                    <input id="editName" class="form-control bg-secondary">
+                </div>
+                <div class="mb-2">
+                    <label>LRN</label>
+                    <input id="editLrn" class="form-control bg-secondary">
+                </div>
+                
+                <div class="row">
+                    <div class="col-6 mb-2">
+                        <label>Grade Level</label>
+                        <input id="editGrade" class="form-control bg-secondary" placeholder="e.g. 4">
+                    </div>
+                    <div class="col-6 mb-2">
+                        <label>Section</label>
+                        <input id="editSection" class="form-control bg-secondary" placeholder="e.g. RIZAL">
+                    </div>
+                </div>
+
+                <h6 class="text-info border-bottom border-secondary pb-1 mt-3">Back of ID</h6>
+                <div class="mb-2">
+                    <label>Guardian Name</label>
+                    <input id="editGuardian" class="form-control bg-secondary">
+                </div>
+                <div class="mb-2">
+                    <label>Address</label>
+                    <input id="editAddress" class="form-control bg-secondary">
+                </div>
+                <div class="mb-2">
+                    <label>Contact No.</label>
+                    <input id="editContact" class="form-control bg-secondary">
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button class="btn btn-success" onclick="saveAndRegenerate()">Save & Regenerate ID</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    let settings = {};
+    let latestId = null;
+
+    async function init() {
+        await loadSettings();
+        await loadTemplates();
+        loadHistory();
+        initWebSocket();
+        
+        // --- LOAD LATEST ID ONCE (No more refreshing loop!) ---
+        fetch('/history').then(r=>r.json()).then(data => {
+            if(data.length > 0) {
+                latestId = data[0].student_id;
+                updateLivePreview(data[0].front_url, data[0].back_url);
+            }
+        });
+    }
+
+    // --- TEMPLATE & SETTINGS ---
+    async function loadSettings() { 
+        try { const res = await fetch('/settings'); settings = await res.json(); } catch(e){} 
+    }
+    
+    async function loadTemplates() { 
+        try { 
+            const res = await fetch('/templates/list'); 
+            const files = await res.json(); 
+            renderTemplateList('front', files, settings.active_template_front); 
+            renderTemplateList('back', files, settings.active_template_back); 
+        } catch(e){} 
+    }
+    
+    function renderTemplateList(type, files, active) {
+        const container = document.getElementById(type + 'TemplateList'); 
+        container.innerHTML = '';
+        files.forEach(f => {
+            const div = document.createElement('div'); 
+            div.className = `template-item ${f === active ? 'active' : ''}`;
+            div.innerHTML = `<img src="/templates/${f}"><small>${f}</small>`;
+            div.onclick = () => { 
+                if(type === 'front') settings.active_template_front = f; 
+                else settings.active_template_back = f; 
+                saveSettings(); 
+                loadTemplates(); 
+            };
+            container.appendChild(div);
+        });
+    }
+    
+    async function saveSettings() { await fetch('/settings', { method: 'POST', body: JSON.stringify(settings) }); }
+    
+    async function uploadTemplate(type) {
+        const fileInput = document.getElementById(type === 'front' ? 'uploadFront' : 'uploadBack');
+        if(!fileInput.files[0]) return; 
+        const formData = new FormData(); 
+        formData.append('file', fileInput.files[0]);
+        await fetch('/templates/upload', { method: 'POST', body: formData }); 
+        loadTemplates(); 
+        fileInput.value = '';
+    }
+
+    // --- HISTORY ---
+    async function loadHistory() {
+        try {
+            const res = await fetch('/history'); 
+            const data = await res.json();
+            const tbody = document.getElementById('historyTable'); 
+            tbody.innerHTML = '';
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${new Date(row.timestamp).toLocaleTimeString()}</td>
+                    <td>${row.student_id}</td>
+                    <td>${row.full_name||'Unknown'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-info" onclick="openEdit(
+                            '${row.student_id}',
+                            '${row.full_name||''}',
+                            '${row.lrn||''}',
+                            '${row.grade_level||''}',
+                            '${row.section||''}',
+                            '${row.guardian_name||''}',
+                            '${row.address||''}',
+                            '${row.guardian_contact||''}'
+                        )">Edit</button> 
+                        <a href="${row.front_url}" target="_blank" class="btn btn-sm btn-outline-light">View</a>
+                    </td>`;
+                tbody.appendChild(tr);
+            });
+        } catch(e){}
+    }
+
+    // --- PREVIEW LOGIC ---
+    function updateLivePreview(frontUrl, backUrl) {
+        const container = document.getElementById('livePreview');
+        const ts = Date.now();
+        // The timestamp ?t=... forces a reload only when this function is CALLED, not every 5s
+        container.innerHTML = `
+            <img src="${frontUrl}?t=${ts}" onerror="retryImage(this, '${frontUrl}')" alt="Front ID">
+            <img src="${backUrl}?t=${ts}" onerror="retryImage(this, '${backUrl}')" alt="Back ID">
+        `;
+    }
+
+    function retryImage(img, url) {
+        let attempts = parseInt(img.getAttribute('data-attempts') || '0');
+        if(attempts < 5) {
+            setTimeout(() => {
+                const ts = Date.now();
+                img.src = `${url}?t=${ts}`;
+                img.setAttribute('data-attempts', attempts + 1);
+            }, 1000);
+        }
+    }
+
+    function forceRefreshPreview() {
+        if(latestId) updateLivePreview(`/output/${latestId}_FRONT.png`, `/output/${latestId}_BACK.png`);
+        loadHistory();
+    }
+
+    // --- EDIT & SAVE ---
+    const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+    
+    function openEdit(id, name, lrn, grade, section, guard, addr, cont) {
+        document.getElementById('editId').value = id;
+        document.getElementById('editName').value = name;
+        document.getElementById('editLrn').value = lrn;
+        document.getElementById('editGrade').value = grade;    
+        document.getElementById('editSection').value = section;
+        document.getElementById('editGuardian').value = guard;
+        document.getElementById('editAddress').value = addr;
+        document.getElementById('editContact').value = cont;
+        editModal.show();
+    }
+    
+    async function saveAndRegenerate() {
+        const id = document.getElementById('editId').value;
+        const data = { 
+            id: id, 
+            name: document.getElementById('editName').value, 
+            lrn: document.getElementById('editLrn').value, 
+            grade_level: document.getElementById('editGrade').value, 
+            section: document.getElementById('editSection').value, 
+            guardian_name: document.getElementById('editGuardian').value, 
+            address: document.getElementById('editAddress').value, 
+            guardian_contact: document.getElementById('editContact').value 
+        };
+        
+        // 1. Update Database
+        await fetch('/students/update', { 
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify(data) 
+        });
+        
+        // 2. Trigger Regenerate
+        const res = await fetch(`/regenerate/${id}`, { method: 'POST' });
+        
+        if(res.ok) { 
+            editModal.hide(); 
+            loadHistory(); 
+            latestId = id; 
+            forceRefreshPreview(); // Updates only once when you save
+        } else { 
+            alert("Error: Original photo not found. Cannot regenerate."); 
+        }
+    }
+
+    // --- WEBSOCKET ---
+    function initWebSocket() {
+        const ws = new WebSocket("ws://" + window.location.host + "/ws");
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if (data.type === 'new_id') {
+                latestId = data.student_id;
+                // Only update when server tells us there is a new ID
+                updateLivePreview(data.front_url, data.back_url);
+                loadHistory(); 
+            }
+        };
+        ws.onclose = () => setTimeout(initWebSocket, 2000);
+    }
+
+    init();
+</script>
+</body>
+</html>

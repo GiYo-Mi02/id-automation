@@ -7,12 +7,12 @@
         body { font-family: 'Segoe UI', sans-serif; background: #121212; color: white; margin: 0; padding: 20px; height: 100vh; display: flex; flex-direction: column; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
         h1 { margin: 0; color: #C41E3A; }
-        .workspace { display: grid; grid-template-columns: 1fr 1fr 300px; gap: 20px; flex: 1; min-height: 0; }
+        .workspace { display: grid; grid-template-columns: 400px 1fr 300px; gap: 20px; flex: 1; min-height: 0; }
         
         /* PANELS */
         .panel { background: #1e1e1e; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; border: 1px solid #333; }
         
-        .video-container { flex: 1; background: black; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative; }
+        .video-container { flex: 1; background: black; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative; max-height: 400px; }
         video { width: 100%; height: 100%; object-fit: cover; }
         
         select, button { width: 100%; padding: 12px; margin-top: 10px; background: #2d2d2d; color: white; border: 1px solid #444; border-radius: 6px; font-size: 1rem; }
@@ -20,8 +20,9 @@
         button:hover { background: #a01830; }
         button:disabled { background: #444; cursor: not-allowed; }
 
-        .result-container { flex: 1; display: flex; align-items: center; justify-content: center; background: #181818; border-radius: 8px; overflow: hidden; position: relative; }
-        .result-container img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); animation: fadein 0.3s; }
+        /* Updated Result Container for Dual Images */
+        .result-container { flex: 1; display: flex; gap: 10px; align-items: center; justify-content: center; background: #181818; border-radius: 8px; overflow: hidden; position: relative; padding: 10px; }
+        .result-container img { height: 90%; max-width: 48%; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); object-fit: contain; animation: fadein 0.3s; border: 1px solid #333; }
         
         .history-item { display: flex; gap: 10px; padding: 10px; border-bottom: 1px solid #333; font-size: 0.9rem; align-items: center; }
         .history-item img { width: 50px; height: 50px; border-radius: 4px; object-fit: cover; border: 1px solid #444; }
@@ -49,10 +50,10 @@
         </div>
 
         <div class="panel">
-            <strong>Generated ID Card</strong>
+            <strong>Generated ID Cards (Front & Back)</strong>
             <div class="result-container" id="resultView">
                 <div id="placeholderText" style="color: #444; text-align: center;">
-                    Ready<br><small>Photos will appear here</small>
+                    Ready<br><small>Front and Back IDs will appear here</small>
                 </div>
             </div>
         </div>
@@ -64,7 +65,6 @@
     </div>
 
     <script>
-        // Use relative paths to avoid CORS or port issues
         const API_URL = ""; 
         const WS_URL = "ws://" + window.location.host + "/ws";
         
@@ -94,37 +94,36 @@
             try {
                 const res = await fetch(`${API_URL}/history`);
                 const data = await res.json();
-                data.forEach(item => addToHistory(item.student_id, item.file_path, false));
+                // We'll just show the front URL in the history list thumbnail
+                data.forEach(item => addToHistory(item.student_id, item.front_url, false));
             } catch(e) { console.log("No history yet"); }
         }
 
         function initWebSocket() {
             const ws = new WebSocket(WS_URL);
             ws.onopen = () => { document.getElementById('status').innerText = "● SYSTEM ONLINE"; document.getElementById('status').style.color = "#4caf50"; };
+            
             ws.onmessage = (e) => {
                 const data = JSON.parse(e.data);
+                
+                // === FIX IS HERE: Accept 'new_id' and look for front_url/back_url ===
                 if (data.type === 'new_id') {
-                    // Force refresh with timestamp
-                    const finalUrl = `${data.image_url}?t=${Date.now()}`;
+                    const ts = Date.now();
+                    const frontUrl = `${data.front_url}?t=${ts}`;
+                    const backUrl = `${data.back_url}?t=${ts}`;
                     
-                    const img = new Image();
-                    img.src = finalUrl;
-                    
-                    img.onload = () => {
-                        const container = document.getElementById('resultView');
-                        container.innerHTML = '';
-                        container.appendChild(img);
-                        addToHistory(data.student_id, finalUrl, true);
-                        
-                        const btn = document.getElementById('captureBtn');
-                        btn.disabled = false; btn.innerText = "CAPTURE PHOTO";
-                    };
+                    const container = document.getElementById('resultView');
+                    container.innerHTML = `
+                        <img src="${frontUrl}" onerror="this.src='https://via.placeholder.com/300x500?text=Loading...'">
+                        <img src="${backUrl}" onerror="this.src='https://via.placeholder.com/300x500?text=Loading...'">
+                    `;
 
-                    img.onerror = () => {
-                        // If logic fails, just show the placeholder with error text
-                         const container = document.getElementById('resultView');
-                         container.innerHTML = `<div style='color:red'>Image Load Error</div>`;
-                    };
+                    // Re-enable button
+                    const btn = document.getElementById('captureBtn');
+                    btn.disabled = false; btn.innerText = "CAPTURE PHOTO";
+
+                    // Add to history sidebar
+                    addToHistory(data.student_id, frontUrl, true);
                 }
             };
             ws.onclose = () => { setTimeout(initWebSocket, 2000); };
@@ -135,8 +134,9 @@
             const div = document.createElement('div');
             div.className = 'history-item';
             
+            // Handle URL cleanup if it looks like a file path
             let displayUrl = url;
-            if (url.includes("C:") || !url.startsWith("http") && !url.startsWith("/")) {
+            if (url && (url.includes("C:") || (!url.startsWith("http") && !url.startsWith("/")))) {
                  const filename = url.split('\\').pop().split('/').pop();
                  displayUrl = `/output/${filename}`;
             }
@@ -165,21 +165,19 @@
             } catch(e) { console.error("Cam error", e); }
         }
 
-       async function startStream(deviceId) {
+        async function startStream(deviceId) {
             const constraints = {
                 video: { 
                     deviceId: deviceId ? { exact: deviceId } : undefined,
-                    width: { ideal: 1920 },  // Try for 1080p
-                    height: { ideal: 1080 }  // Try for 1080p
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
                 }
             };
-            
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 document.getElementById('liveVideo').srcObject = stream;
             } catch (e) {
                 console.error("HD failed, trying default", e);
-                // Fallback if camera doesn't support HD
                 const fallbackStream = await navigator.mediaDevices.getUserMedia({ 
                     video: { deviceId: deviceId ? { exact: deviceId } : undefined } 
                 });

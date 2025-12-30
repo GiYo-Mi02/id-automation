@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ID Card Layout Editor</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #222; color: white; display: flex; height: 100vh; margin: 0; }
+        .sidebar { width: 300px; padding: 20px; background: #333; border-right: 1px solid #444; display: flex; flex-direction: column; gap: 10px; }
+        .canvas-area { flex: 1; display: flex; justify-content: center; align-items: center; background: #111; overflow: auto; position: relative; }
+        
+        #editor-container { position: relative; width: 591px; height: 1004px; background: white; box-shadow: 0 0 20px black; transform-origin: top center; transform: scale(0.8); transition: background 0.2s; }
+        .bg-img { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 0; pointer-events: none; }
+        
+        .draggable {
+            position: absolute; border: 1px dashed #00ccff; background: rgba(0, 204, 255, 0.2);
+            cursor: move; user-select: none; color: black; font-weight: bold; display: flex; align-items: center; justify-content: center; z-index: 10;
+        }
+        .draggable:hover { background: rgba(0, 204, 255, 0.4); border: 1px solid white; }
+        
+        label { font-size: 0.8rem; color: #aaa; margin-top: 5px; display:block; }
+        input[type="number"], input[type="color"], select { width: 100%; background: #444; border: 1px solid #555; color: white; padding: 5px; margin-bottom: 5px; }
+        button { padding: 10px; background: #007acc; color: white; border: none; cursor: pointer; font-weight: bold; width: 100%; }
+        button:hover { background: #005f9e; }
+        
+        .view-controls { display: flex; gap: 5px; margin-bottom: 10px; }
+        .view-controls button { flex: 1; background: #444; }
+        .view-controls button.active { background: #007acc; }
+
+        .active-el { border: 2px solid yellow; background: rgba(255, 255, 0, 0.3); }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>🎨 ID Editor</h2>
+    
+    <div class="view-controls">
+        <button id="btn-front" onclick="switchView('front')" class="active">Front</button>
+        <button id="btn-back" onclick="switchView('back')">Back</button>
+    </div>
+
+    <div>
+        <label>Background Template</label>
+        <select id="templateSelect" onchange="changeTemplate(this.value)">
+            <option value="">Loading...</option>
+        </select>
+    </div>
+    
+    <hr style="border-color:#444; width:100%;">
+    
+    <div id="controls">
+        <p style="color:#777; font-style:italic;">Click an element on the ID to edit properties.</p>
+    </div>
+
+    <div style="margin-top:auto">
+        <button onclick="saveAll()" style="background: #28a745;">💾 SAVE LAYOUT & SETTINGS</button>
+        <p id="status" style="text-align:center; font-size:0.8rem; color:#aaa; margin-top:5px;"></p>
+    </div>
+</div>
+
+<div class="canvas-area">
+    <div id="editor-container">
+        </div>
+</div>
+
+<script>
+    let currentLayout = {};
+    let currentSettings = {};
+    let currentView = 'front';
+    let availableTemplates = [];
+    let selectedId = null;
+
+    // --- INITIALIZATION ---
+    async function init() {
+        await Promise.all([loadLayout(), loadSettings(), loadTemplates()]);
+        render();
+        updateTemplateDropdown();
+    }
+
+    async function loadLayout() {
+        const res = await fetch('/layout');
+        currentLayout = await res.json();
+    }
+
+    async function loadSettings() {
+        const res = await fetch('/settings');
+        currentSettings = await res.json();
+    }
+
+    async function loadTemplates() {
+        const res = await fetch('/templates/list');
+        availableTemplates = await res.json();
+    }
+
+    // --- VIEW LOGIC ---
+    function switchView(view) {
+        currentView = view;
+        
+        // Update Buttons
+        document.getElementById('btn-front').className = view === 'front' ? 'active' : '';
+        document.getElementById('btn-back').className = view === 'back' ? 'active' : '';
+
+        // Update Dropdown to match the active template for this view
+        updateTemplateDropdown();
+        
+        render();
+    }
+
+    function updateTemplateDropdown() {
+        const select = document.getElementById('templateSelect');
+        select.innerHTML = '';
+        
+        availableTemplates.forEach(tpl => {
+            const opt = document.createElement('option');
+            opt.value = tpl;
+            opt.innerText = tpl;
+            select.appendChild(opt);
+        });
+
+        // Select the active one based on settings
+        const activeKey = currentView === 'front' ? 'active_template_front' : 'active_template_back';
+        if (currentSettings[activeKey]) {
+            select.value = currentSettings[activeKey];
+        }
+    }
+
+    function changeTemplate(filename) {
+        // Update local settings object
+        const activeKey = currentView === 'front' ? 'active_template_front' : 'active_template_back';
+        currentSettings[activeKey] = filename;
+        render(); // Re-render canvas with new BG
+    }
+
+    // --- RENDERING ---
+    function render() {
+        const container = document.getElementById('editor-container');
+        container.innerHTML = '';
+        
+        // 1. Render Background
+        const bg = document.createElement('img');
+        const activeKey = currentView === 'front' ? 'active_template_front' : 'active_template_back';
+        const bgFile = currentSettings[activeKey] || (currentView==='front'?'wardiere_template.png':'wardiere_back.png');
+        
+        bg.src = `/templates/${bgFile}`;
+        bg.className = 'bg-img';
+        container.appendChild(bg);
+
+        // 2. Render Draggable Elements
+        const elements = currentLayout[currentView] || {};
+        for (const [key, conf] of Object.entries(elements)) {
+            const el = document.createElement('div');
+            el.className = 'draggable';
+            el.id = key;
+            if(selectedId === key) el.classList.add('active-el');
+            
+            // Position
+            el.style.left = conf.x + 'px';
+            el.style.top = conf.y + 'px';
+            
+            // Content
+            if (key === 'photo') {
+                el.style.width = conf.w + 'px';
+                el.style.height = conf.h + 'px';
+                el.style.display = 'flex';
+                el.innerText = "PHOTO AREA";
+                el.style.color = "rgba(0,0,0,0.5)";
+            } else {
+                el.style.fontSize = (conf.size || 20) + 'px';
+                el.style.color = conf.color || 'black';
+                el.style.fontWeight = conf.bold ? 'bold' : 'normal';
+                el.innerText = key.toUpperCase();
+                el.style.whiteSpace = 'nowrap';
+            }
+
+            // Events
+            el.onmousedown = startDrag;
+            el.onclick = (e) => {
+                e.stopPropagation();
+                selectElement(key, conf);
+            };
+            container.appendChild(el);
+        }
+    }
+
+    // --- DRAG LOGIC ---
+    let activeDrag = null;
+    let offsetX = 0, offsetY = 0;
+
+    function startDrag(e) {
+        activeDrag = e.target;
+        const rect = activeDrag.getBoundingClientRect();
+        offsetX = e.clientX - rect.left;
+        offsetY = e.clientY - rect.top;
+        document.addEventListener('mousemove', onDrag);
+        document.addEventListener('mouseup', stopDrag);
+    }
+
+    function onDrag(e) {
+        if (!activeDrag) return;
+        const container = document.getElementById('editor-container');
+        const contRect = container.getBoundingClientRect();
+        const scale = 0.8; 
+        
+        let x = (e.clientX - contRect.left - offsetX) / scale;
+        let y = (e.clientY - contRect.top - offsetY) / scale;
+        
+        activeDrag.style.left = x + 'px';
+        activeDrag.style.top = y + 'px';
+        
+        // Update Data
+        if (!currentLayout[currentView][activeDrag.id]) currentLayout[currentView][activeDrag.id] = {};
+        currentLayout[currentView][activeDrag.id].x = Math.round(x);
+        currentLayout[currentView][activeDrag.id].y = Math.round(y);
+        
+        if (activeDrag.id === selectedId) updateControlsUI(activeDrag.id, currentLayout[currentView][activeDrag.id]);
+    }
+
+    function stopDrag() {
+        document.removeEventListener('mousemove', onDrag);
+        document.removeEventListener('mouseup', stopDrag);
+        activeDrag = null;
+    }
+
+    // --- SELECTION & EDITING ---
+    function selectElement(key, conf) {
+        selectedId = key;
+        render(); // Re-render to show highlight
+        updateControlsUI(key, conf);
+    }
+
+    function updateControlsUI(key, conf) {
+        const controls = document.getElementById('controls');
+        let html = `<h3>Editing: ${key.toUpperCase()}</h3>`;
+        
+        html += `<label>X Position</label><input type="number" value="${Math.round(conf.x)}" onchange="updateVal('${key}','x',this.value)">`;
+        html += `<label>Y Position</label><input type="number" value="${Math.round(conf.y)}" onchange="updateVal('${key}','y',this.value)">`;
+        
+        if (key === 'photo') {
+            html += `<label>Width</label><input type="number" value="${conf.w}" onchange="updateVal('${key}','w',this.value)">`;
+            html += `<label>Height</label><input type="number" value="${conf.h}" onchange="updateVal('${key}','h',this.value)">`;
+        } else {
+            html += `<label>Font Size</label><input type="number" value="${conf.size}" onchange="updateVal('${key}','size',this.value)">`;
+            html += `<label>Color</label><input type="color" value="${conf.color}" onchange="updateVal('${key}','color',this.value)">`;
+        }
+        controls.innerHTML = html;
+    }
+
+    function updateVal(key, field, val) {
+        currentLayout[currentView][key][field] = (field === 'color') ? val : parseInt(val);
+        render();
+        updateControlsUI(key, currentLayout[currentView][key]); // Keep focus
+    }
+
+    // --- SAVING ---
+    async function saveAll() {
+        const btn = document.querySelector('button[onclick="saveAll()"]');
+        const originalText = btn.innerText;
+        btn.innerText = "SAVING...";
+        btn.disabled = true;
+
+        try {
+            // 1. Save Layout (Positions)
+            await fetch('/layout', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(currentLayout)
+            });
+
+            // 2. Save Settings (Active Template choice)
+            await fetch('/settings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(currentSettings)
+            });
+
+            document.getElementById('status').innerText = "✅ Saved at " + new Date().toLocaleTimeString();
+            document.getElementById('status').style.color = "#4cff00";
+        } catch (e) {
+            document.getElementById('status').innerText = "❌ Error saving";
+            document.getElementById('status').style.color = "red";
+        }
+
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+
+    init();
+</script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+{
+    "front": {
+        "photo": {
+            "x": 64,
+            "y": 202,
+            "w": 460,
+            "h": 460
+        },
+        "name": {
+            "x": 254,
+            "y": 683,
+            "size": 30,
+            "color": "#f34f4f",
+            "bold": true,
+            "align": "center"
+        },
+        "lrn": {
+            "x": 274,
+            "y": 743,
+            "size": 18,
+            "color": "#000000",
+            "align": "left"
+        },
+        "grade_level": {
+            "x": 9000,
+            "y": 9000,
+            "size": 1,
+            "color": "#000000",
+            "align": "center"
+        },
+        "section": {
+            "x": 426,
+            "y": 845,
+            "size": 16,
+            "color": "#000000",
+            "align": "center"
+        }
+    },
+    "back": {
+        "guardian_name": {
+            "x": 175,
+            "y": 149,
+            "size": 30,
+            "color": "#000000",
+            "align": "left"
+        },
+        "address": {
+            "x": 204,
+            "y": 282,
+            "size": 30,
+            "color": "#000000",
+            "align": "left"
+        },
+        "guardian_contact": {
+            "x": 227,
+            "y": 417,
+            "size": 30,
+            "color": "#000000",
+            "align": "left"
+        }
+    }
+}
