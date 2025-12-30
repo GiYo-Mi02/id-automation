@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Automated ID Live Capture</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: white; margin: 0; padding: 20px; height: 100vh; display: flex; flex-direction: column; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        h1 { margin: 0; color: #C41E3A; }
+        .workspace { display: grid; grid-template-columns: 1fr 1fr 300px; gap: 20px; flex: 1; min-height: 0; }
+        
+        /* PANELS */
+        .panel { background: #1e1e1e; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; border: 1px solid #333; }
+        
+        .video-container { flex: 1; background: black; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        
+        select, button { width: 100%; padding: 12px; margin-top: 10px; background: #2d2d2d; color: white; border: 1px solid #444; border-radius: 6px; font-size: 1rem; }
+        button { background: #C41E3A; border: none; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #a01830; }
+        button:disabled { background: #444; cursor: not-allowed; }
+
+        .result-container { flex: 1; display: flex; align-items: center; justify-content: center; background: #181818; border-radius: 8px; overflow: hidden; position: relative; }
+        .result-container img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); animation: fadein 0.3s; }
+        
+        .history-item { display: flex; gap: 10px; padding: 10px; border-bottom: 1px solid #333; font-size: 0.9rem; align-items: center; }
+        .history-item img { width: 50px; height: 50px; border-radius: 4px; object-fit: cover; border: 1px solid #444; }
+
+        @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Automated Live Captures</h1>
+        <div id="status" style="color: #666;">● System Connecting...</div>
+    </div>
+
+    <div class="workspace">
+        <div class="panel">
+            <div style="display:flex; justify-content:space-between;">
+                <strong>Live Preview</strong>
+                <select id="cameraSource" style="width: auto; margin:0; padding: 5px; font-size: 0.8rem;"><option>Loading...</option></select>
+            </div>
+            <div class="video-container">
+                <video id="liveVideo" autoplay playsinline muted></video>
+            </div>
+            <select id="studentSelect"><option value="">Loading students...</option></select>
+            <button id="captureBtn" onclick="capturePhoto()">CAPTURE PHOTO</button>
+        </div>
+
+        <div class="panel">
+            <strong>Generated ID Card</strong>
+            <div class="result-container" id="resultView">
+                <div id="placeholderText" style="color: #444; text-align: center;">
+                    Ready<br><small>Photos will appear here</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <strong>History</strong>
+            <div id="historyList" style="overflow-y: auto; flex: 1; margin-top: 10px;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Use relative paths to avoid CORS or port issues
+        const API_URL = ""; 
+        const WS_URL = "ws://" + window.location.host + "/ws";
+        
+        async function init() {
+            loadStudents();
+            loadHistory();
+            initCamera();
+            initWebSocket();
+        }
+
+        async function loadStudents() {
+            try {
+                const res = await fetch(`${API_URL}/students`);
+                const data = await res.json();
+                const sel = document.getElementById('studentSelect');
+                sel.innerHTML = '<option value="">-- Select Student --</option>';
+                data.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id_number || s.ID_Number;
+                    opt.text = `${s.id_number || s.ID_Number} - ${s.full_name || s.Full_Name}`;
+                    sel.appendChild(opt);
+                });
+            } catch(e) { console.error("DB Error:", e); }
+        }
+
+        async function loadHistory() {
+            try {
+                const res = await fetch(`${API_URL}/history`);
+                const data = await res.json();
+                data.forEach(item => addToHistory(item.student_id, item.file_path, false));
+            } catch(e) { console.log("No history yet"); }
+        }
+
+        function initWebSocket() {
+            const ws = new WebSocket(WS_URL);
+            ws.onopen = () => { document.getElementById('status').innerText = "● SYSTEM ONLINE"; document.getElementById('status').style.color = "#4caf50"; };
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.type === 'new_id') {
+                    // Force refresh with timestamp
+                    const finalUrl = `${data.image_url}?t=${Date.now()}`;
+                    
+                    const img = new Image();
+                    img.src = finalUrl;
+                    
+                    img.onload = () => {
+                        const container = document.getElementById('resultView');
+                        container.innerHTML = '';
+                        container.appendChild(img);
+                        addToHistory(data.student_id, finalUrl, true);
+                        
+                        const btn = document.getElementById('captureBtn');
+                        btn.disabled = false; btn.innerText = "CAPTURE PHOTO";
+                    };
+
+                    img.onerror = () => {
+                        // If logic fails, just show the placeholder with error text
+                         const container = document.getElementById('resultView');
+                         container.innerHTML = `<div style='color:red'>Image Load Error</div>`;
+                    };
+                }
+            };
+            ws.onclose = () => { setTimeout(initWebSocket, 2000); };
+        }
+
+        function addToHistory(id, url, prepend) {
+            const list = document.getElementById('historyList');
+            const div = document.createElement('div');
+            div.className = 'history-item';
+            
+            let displayUrl = url;
+            if (url.includes("C:") || !url.startsWith("http") && !url.startsWith("/")) {
+                 const filename = url.split('\\').pop().split('/').pop();
+                 displayUrl = `/output/${filename}`;
+            }
+
+            div.innerHTML = `<img src="${displayUrl}" onerror="this.src='https://placehold.co/50x50?text=Err'">
+                             <div><strong>${id}</strong><br><small>Generated</small></div>`;
+            
+            if (prepend) list.insertBefore(div, list.firstChild);
+            else list.appendChild(div);
+        }
+
+        async function initCamera() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(d => d.kind === 'videoinput');
+                const sel = document.getElementById('cameraSource');
+                sel.innerHTML = '';
+                videoDevices.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.deviceId;
+                    opt.text = d.label || `Camera ${sel.options.length + 1}`;
+                    sel.appendChild(opt);
+                });
+                startStream(videoDevices[0]?.deviceId);
+                sel.onchange = (e) => startStream(e.target.value);
+            } catch(e) { console.error("Cam error", e); }
+        }
+
+       async function startStream(deviceId) {
+            const constraints = {
+                video: { 
+                    deviceId: deviceId ? { exact: deviceId } : undefined,
+                    width: { ideal: 1920 },  // Try for 1080p
+                    height: { ideal: 1080 }  // Try for 1080p
+                }
+            };
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                document.getElementById('liveVideo').srcObject = stream;
+            } catch (e) {
+                console.error("HD failed, trying default", e);
+                // Fallback if camera doesn't support HD
+                const fallbackStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { deviceId: deviceId ? { exact: deviceId } : undefined } 
+                });
+                document.getElementById('liveVideo').srcObject = fallbackStream;
+            }
+        }
+
+        async function capturePhoto() {
+            const video = document.getElementById('liveVideo');
+            const id = document.getElementById('studentSelect').value;
+            if (!id) return alert("Select a student!");
+            
+            const btn = document.getElementById('captureBtn');
+            btn.disabled = true; btn.innerText = "PROCESSING...";
+
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            canvas.toBlob(async (blob) => {
+                const formData = new FormData();
+                formData.append('file', blob, "capture.jpg");
+                formData.append('student_id', id);
+                await fetch(`${API_URL}/capture`, { method: 'POST', body: formData });
+            }, 'image/jpeg');
+        }
+
+        init();
+    </script>
+</body>
+</html>
