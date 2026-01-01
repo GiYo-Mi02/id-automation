@@ -1,7 +1,7 @@
 import app.database as database
 
 def reset_database():
-    print("⚠️ WARNING: This will DELETE all data and add the 'GRADE_LEVEL' column!")
+    print("WARNING: This will DELETE all data and add the 'GRADE_LEVEL' column!")
     confirm = input("Type 'DELETE' to confirm: ")
     
     if confirm != "DELETE":
@@ -15,7 +15,7 @@ def reset_database():
         cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
         cursor.execute("DROP TABLE IF EXISTS students")
         
-        print("✨ Creating new table with Grade Level & Section...")
+        print("Creating new table with Grade Level & Section...")
         # NEW STRUCTURE: Separated Grade and Section
         sql = """
         CREATE TABLE students (
@@ -32,10 +32,10 @@ def reset_database():
         cursor.execute(sql)
         cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
         conn.commit()
-        print("✅ SUCCESS! Database updated.")
+        print("SUCCESS! Database updated.")
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
     finally:
         conn.close()
 

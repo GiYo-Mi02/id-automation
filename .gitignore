@@ -82,9 +82,11 @@ $RECYCLE.BIN/
 # Output folders
 Output_Ready/
 Print_Sheets/
+data/output
 
 # Input folders
 Input_Raw/
+data/input
 
 # Templates
 Templates/
@@ -100,3 +102,6 @@ Templates/
 
 # Log files
 *.log
+data/input/
+*.pth
+data/models/

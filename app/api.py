@@ -45,7 +45,7 @@ class IDGenerationHandler(FileSystemEventHandler):
         if filepath in self.processing: return
         self.processing.add(filepath)
 
-        print(f"\n📸 New photo detected: {Path(filepath).name}")
+        print(f"\nNew photo detected: {Path(filepath).name}")
         time.sleep(0.5) 
         
         try:
@@ -70,7 +70,7 @@ class IDGenerationHandler(FileSystemEventHandler):
 # ==================== APP LIFECYCLE ====================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure folders exist (using data/ prefix now)
+    # Ensure folders exist
     Path(CONFIG['OUTPUT_FOLDER']).mkdir(parents=True, exist_ok=True)
     Path(CONFIG['INPUT_FOLDER']).mkdir(parents=True, exist_ok=True)
     Path(CONFIG['TEMPLATE_FOLDER']).mkdir(parents=True, exist_ok=True)
@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
     
     app.state.processor = processor
     app.state.observer = observer
-    print(f"👀 System Online: Watching {CONFIG['INPUT_FOLDER']}")
+    print(f"System Online: Watching {CONFIG['INPUT_FOLDER']}")
     yield
     app.state.observer.stop()
     app.state.observer.join()
@@ -95,11 +95,10 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 
 # ==================== ROUTES ====================
 
-# FIXED: Pointing to 'web/' folder
 @app.get("/")
 async def read_index(): return FileResponse('web/index.html')
 
-@app.get("/index.html") # Redirect just in case
+@app.get("/index.html")
 async def read_index_explicit(): return FileResponse('web/index.html')
 
 @app.get("/dashboard")
@@ -193,14 +192,48 @@ def get_history():
         })
     return enhanced_history
 
+# --- UPDATED CAPTURE ENDPOINT ---
 @app.post("/capture")
-async def upload_capture(file: UploadFile = File(...), student_id: str = Form(...)):
+async def upload_capture(
+    file: UploadFile = File(...), 
+    student_id: str = Form(...),
+    # Manual Fields
+    manual_name: str = Form(None),
+    manual_grade: str = Form(None),
+    manual_section: str = Form(None),
+    manual_guardian: str = Form(None), # NEW
+    manual_address: str = Form(None),  # NEW
+    manual_contact: str = Form(None)   # NEW
+):
     try:
+        # 1. If manual data exists, save it to a JSON sidecar file
+        if manual_name:
+            json_path = Path(CONFIG['INPUT_FOLDER']) / f"{student_id}.json"
+            manual_data = {
+                "id_number": student_id,
+                "full_name": manual_name,
+                "grade_level": manual_grade or "",
+                "section": manual_section or "",
+                # Capture the new Back of ID fields
+                "guardian_name": manual_guardian or "", 
+                "address": manual_address or "", 
+                "guardian_contact": manual_contact or "",
+                "lrn": "" # Default empty
+            }
+            with open(json_path, 'w') as f:
+                json.dump(manual_data, f)
+            print(f"Manual data saved for {student_id}")
+
+        # 2. Save the image (Triggers Watchdog)
         filename = f"{student_id}.jpg"
         save_path = Path(CONFIG['INPUT_FOLDER']) / filename
-        with open(save_path, "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+        with open(save_path, "wb") as buffer: 
+            shutil.copyfileobj(file.file, buffer)
+            
         return {"status": "saved", "path": str(save_path)}
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: 
+        print(f"Capture Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

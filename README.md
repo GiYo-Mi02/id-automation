@@ -171,4 +171,8 @@ While functional and effective, the current implementation has notable limitatio
 
 The ID Management System demonstrates how automation and AI can significantly improve operational efficiency in institutional workflows. While the current system already delivers speed, consistency, and usability, its full potential lies in future modernization—particularly through a dynamic frontend, scalable backend infrastructure, and cloud-native architecture.
 
+<<<<<<< HEAD
 With these improvements, the system can evolve from a functional internal tool into a robust, enterprise-grade ID management platform.
+=======
+With these improvements, the system can evolve from a functional internal tool into a robust, enterprise-grade ID management platform.
+>>>>>>> e3b911d7d3156b59008bceed5993db5dc7fc8365

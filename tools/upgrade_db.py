@@ -1,7 +1,7 @@
 import app.database as database
 
 def upgrade():
-    print("🔌 Connecting to Database...")
+    print("Connecting to Database...")
     conn = database.get_db_connection()
     if not conn: return
 
@@ -18,18 +18,18 @@ def upgrade():
         # "ALTER TABLE students DROP COLUMN email"
     ]
     
-    print("⚙️ Upgrading tables...")
+    print("Upgrading tables...")
     for sql in commands:
         try:
             cursor.execute(sql)
-            print(f"   ✅ Executed: {sql}")
+            print(f"   Executed: {sql}")
         except Exception as e:
             # Ignore error if column already exists
-            print(f"   ⚠️ Skipped (might already exist): {sql}")
+            print(f"   Skipped (might already exist): {sql}")
 
     conn.commit()
     conn.close()
-    print("\n✨ Database Upgrade Complete!")
+    print("\nDatabase Upgrade Complete!")
 
 if __name__ == "__main__":
     upgrade()
