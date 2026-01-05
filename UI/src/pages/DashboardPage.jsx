@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useWebSocket } from '../contexts/WebSocketContext'
 import { useToast } from '../contexts/ToastContext'
+import { authenticatedFetch, api } from '../services/api'
 import DashboardTopBar from '../components/dashboard/DashboardTopBar'
 import StatsGrid from '../components/dashboard/StatsGrid'
 import LivePreviewColumn from '../components/dashboard/LivePreviewColumn'
@@ -17,6 +18,11 @@ export default function DashboardPage() {
   const [latestOutput, setLatestOutput] = useState(null)
   const [students, setStudents] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalStudents, setTotalStudents] = useState(0)
+  const [sortBy, setSortBy] = useState('created_at')
+  const [sortOrder, setSortOrder] = useState('DESC')
+  const [filterSection, setFilterSection] = useState('')
   
   const [editingStudent, setEditingStudent] = useState(null)
   const [viewingStudent, setViewingStudent] = useState(null)
@@ -24,17 +30,14 @@ export default function DashboardPage() {
   // Define fetch functions with useCallback (must be before useEffect that uses them)
   const fetchTemplates = useCallback(async () => {
     try {
-      const res = await fetch('/api/templates')
-      if (res.ok) {
-        const data = await res.json()
-        setTemplates(data)
-        // Set active templates if available
-        if (data.front?.length > 0) {
-          setActiveTemplate(prev => ({ ...prev, front: data.front[0] }))
-        }
-        if (data.back?.length > 0) {
-          setActiveTemplate(prev => ({ ...prev, back: data.back[0] }))
-        }
+      const data = await api.get('/api/templates')
+      setTemplates(data)
+      // Set active templates if available
+      if (data.front?.length > 0) {
+        setActiveTemplate(prev => ({ ...prev, front: data.front[0] }))
+      }
+      if (data.back?.length > 0) {
+        setActiveTemplate(prev => ({ ...prev, back: data.back[0] }))
       }
     } catch (err) {
       console.error('Failed to fetch templates:', err)
@@ -44,26 +47,36 @@ export default function DashboardPage() {
   const fetchStudents = useCallback(async () => {
     setIsLoading(true)
     try {
-      const res = await fetch('/api/history?limit=50')
-      if (res.ok) {
-        const data = await res.json()
-        setStudents(data)
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        page_size: '50',
+        sort_by: sortBy,
+        sort_order: sortOrder
+      })
+      
+      if (filterSection) {
+        params.append('section', filterSection)
       }
+      
+      const data = await api.get(`/api/students?${params.toString()}`)
+      // Backend returns {students: [], total: N, page: 1, page_size: 50}
+      setStudents(data.students || [])
+      setTotalStudents(data.total || 0)
     } catch (err) {
       console.error('Failed to fetch students:', err)
+      setStudents([])
+      setTotalStudents(0)
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [currentPage, sortBy, sortOrder, filterSection])
 
   const fetchLatestOutput = useCallback(async () => {
     try {
-      const res = await fetch('/api/history?limit=1')
-      if (res.ok) {
-        const data = await res.json()
-        if (data.length > 0) {
-          setLatestOutput(data[0])
-        }
+      const data = await api.get('/api/history?limit=1')
+      // Backend returns {history: [], total: N, limit: N}
+      if (data.history && data.history.length > 0) {
+        setLatestOutput(data.history[0])
       }
     } catch (err) {
       console.error('Failed to fetch latest output:', err)
@@ -104,38 +117,22 @@ export default function DashboardPage() {
   const handleSaveStudent = async (updatedStudent) => {
     try {
       const studentId = updatedStudent.student_id || updatedStudent.id_number
-      const res = await fetch(`/api/students/${studentId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedStudent),
-      })
-
-      if (res.ok) {
-        toast.success('Student Updated', 'Student information saved successfully')
-        setEditingStudent(null)
-        fetchStudents()
-      } else {
-        throw new Error('Failed to update')
-      }
+      await api.put(`/api/students/${studentId}`, updatedStudent)
+      toast.success('Student Updated', 'Student information saved successfully')
+      setEditingStudent(null)
+      fetchStudents()
     } catch (err) {
-      toast.error('Update Failed', 'Could not save student information')
+      toast.error('Update Failed', err.message || 'Could not save student information')
     }
   }
 
   const handleRegenerate = async (student) => {
     try {
       const studentId = student.student_id || student.id_number
-      const res = await fetch(`/api/regenerate/${studentId}`, {
-        method: 'POST',
-      })
-
-      if (res.ok) {
-        toast.info('Regenerating', `ID regeneration started for ${student.full_name}`)
-      } else {
-        throw new Error('Failed to regenerate')
-      }
+      await api.post(`/api/regenerate/${studentId}`)
+      toast.info('Regenerating', `ID regeneration started for ${student.full_name}`)
     } catch (err) {
-      toast.error('Regeneration Failed', 'Could not regenerate ID')
+      toast.error('Regeneration Failed', err.message || 'Could not regenerate ID')
     }
   }
 
@@ -154,6 +151,21 @@ export default function DashboardPage() {
             <StudentTable
               students={students}
               isLoading={isLoading}
+              totalStudents={totalStudents}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortChange={(newSortBy, newSortOrder) => {
+                setSortBy(newSortBy)
+                setSortOrder(newSortOrder)
+                setCurrentPage(1)
+              }}
+              filterSection={filterSection}
+              onFilterChange={(section) => {
+                setFilterSection(section)
+                setCurrentPage(1)
+              }}
               onRefresh={fetchStudents}
               onEdit={handleEditStudent}
               onView={handleViewStudent}

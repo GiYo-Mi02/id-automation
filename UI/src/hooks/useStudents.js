@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { authenticatedFetch } from '../services/api'
 
 export function useStudents(initialLimit = 50) {
   const [students, setStudents] = useState([])
@@ -10,12 +11,12 @@ export function useStudents(initialLimit = 50) {
     setError(null)
     
     try {
-      const res = await fetch(`/api/students?limit=${limit}`)
-      if (!res.ok) throw new Error('Failed to fetch students')
-      const data = await res.json()
-      setStudents(data)
+      const data = await authenticatedFetch(`/api/students?page=1&page_size=${limit}`)
+      // Backend returns {students: [], total: N, page: 1, page_size: limit}
+      setStudents(data.students || [])
     } catch (err) {
       setError(err.message)
+      setStudents([])
     } finally {
       setLoading(false)
     }
@@ -25,9 +26,7 @@ export function useStudents(initialLimit = 50) {
     if (!query) return []
     
     try {
-      const res = await fetch(`/api/students/search?q=${encodeURIComponent(query)}`)
-      if (!res.ok) throw new Error('Search failed')
-      return await res.json()
+      return await authenticatedFetch(`/api/students/search?q=${encodeURIComponent(query)}`)
     } catch (err) {
       console.error('Search error:', err)
       return []
@@ -36,12 +35,10 @@ export function useStudents(initialLimit = 50) {
 
   const updateStudent = useCallback(async (idNumber, data) => {
     try {
-      const res = await fetch(`/api/students/${idNumber}`, {
+      await authenticatedFetch(`/api/students/${idNumber}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
-      if (!res.ok) throw new Error('Update failed')
       await fetchStudents()
       return true
     } catch (err) {

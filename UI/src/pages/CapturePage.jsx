@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useWebSocket } from '../contexts/WebSocketContext'
 import { useToast } from '../contexts/ToastContext'
+import { api } from '../services/api'
 import CaptureTopBar from '../components/capture/CaptureTopBar'
 import CameraViewport from '../components/capture/CameraViewport'
 import ControlBar from '../components/capture/ControlBar'
@@ -110,13 +111,12 @@ export default function CapturePage() {
   // Stable fetch function to prevent infinite loops
   const fetchRecentCaptures = useCallback(async () => {
     try {
-      const res = await fetch('/api/history?limit=20')
-      if (res.ok) {
-        const data = await res.json()
-        setRecentCaptures(data)
-      }
+      const data = await api.get('/api/students?page=1&page_size=20&sort_by=created_at&sort_order=DESC')
+      // Backend returns {students: [], total: N, page: 1, page_size: 20}
+      setRecentCaptures(data.students || [])
     } catch (err) {
-      console.error('Failed to fetch history:', err)
+      console.error('Failed to fetch recent captures:', err)
+      setRecentCaptures([])
     }
   }, [])
 
@@ -157,20 +157,12 @@ export default function CapturePage() {
         formData.append('manual_contact', studentData.contact_number || studentData.guardian_contact || '')
       }
 
-      const res = await fetch('/api/capture', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!res.ok) {
-        throw new Error('Capture failed')
-      }
-
+      const res = await api.post('/api/capture', formData)
       toast.success('Photo Captured', 'Processing ID card...')
       // Result will come via WebSocket
     } catch (err) {
       console.error('Capture error:', err)
-      toast.error('Capture Failed', 'Could not process the capture')
+      toast.error('Capture Failed', err.message || 'Could not process the capture')
       setIsCapturing(false)
     }
   }, [inputMode, selectedStudent, manualData, isCapturing, toast])

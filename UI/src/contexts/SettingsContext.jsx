@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { authenticatedFetch } from '../services/api'
 
 const SettingsContext = createContext(null)
 
@@ -19,11 +20,8 @@ export function SettingsProvider({ children }) {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch('/api/settings')
-      if (res.ok) {
-        const data = await res.json()
-        setSettings(prev => ({ ...prev, ...data }))
-      }
+      const data = await authenticatedFetch('/api/settings')
+      setSettings(prev => ({ ...prev, ...data }))
     } catch (err) {
       console.error('Failed to fetch settings:', err)
     } finally {
@@ -36,12 +34,10 @@ export function SettingsProvider({ children }) {
     setSettings(updated)
     
     try {
-      const res = await fetch('/api/settings', {
+      await authenticatedFetch('/api/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),
       })
-      if (!res.ok) throw new Error('Failed to save settings')
       return true
     } catch (err) {
       console.error('Failed to save settings:', err)

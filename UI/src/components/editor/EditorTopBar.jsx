@@ -11,10 +11,10 @@ export default function EditorTopBar({
   onSave,
   isSaving,
 }) {
-  const templateOptions = templates?.map((t, i) => ({
+  const templateOptions = (Array.isArray(templates) ? templates : []).map((t, i) => ({
     value: t.path || i,
     label: t.name || `Template ${i + 1}`,
-  })) || []
+  }))
 
   return (
     <header className="h-16 px-6 bg-navy-900 border-b border-navy-700 flex items-center justify-between shrink-0">

@@ -88,7 +88,7 @@ export default function LivePreviewColumn({
         <div className="flex-1 overflow-y-auto p-2 space-y-2">
             {/* Front Templates */}
             <div className="px-2 py-1 text-xs font-bold text-slate-500 uppercase tracking-wider">Front</div>
-            {templates.front?.map(t => (
+            {(Array.isArray(templates?.front) ? templates.front : []).map(t => (
                 <TemplateItem 
                     key={t.path} 
                     template={t} 
@@ -99,7 +99,7 @@ export default function LivePreviewColumn({
             
             {/* Back Templates */}
             <div className="px-2 py-1 text-xs font-bold text-slate-500 uppercase tracking-wider mt-4">Back</div>
-            {templates.back?.map(t => (
+            {(Array.isArray(templates?.back) ? templates.back : []).map(t => (
                 <TemplateItem 
                     key={t.path} 
                     template={t} 

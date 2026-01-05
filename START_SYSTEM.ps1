@@ -37,7 +37,7 @@ Set-Location '$PWD'
 Write-Host '[OK] Virtual environment activated' -ForegroundColor Green
 Write-Host '[*] Starting FastAPI server on port 8000...' -ForegroundColor Cyan
 Write-Host ''
-uvicorn app.api:app --reload --port 8000
+python run.py
 "@
 
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendScript

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { authenticatedFetch } from '../services/api'
 
 export function useTemplates() {
   const [templates, setTemplates] = useState({ front: [], back: [] })
@@ -10,9 +11,7 @@ export function useTemplates() {
     setError(null)
     
     try {
-      const res = await fetch('/api/templates')
-      if (!res.ok) throw new Error('Failed to fetch templates')
-      const data = await res.json()
+      const data = await authenticatedFetch('/api/templates')
       setTemplates(data)
     } catch (err) {
       setError(err.message)
@@ -27,11 +26,10 @@ export function useTemplates() {
     formData.append('type', type)
 
     try {
-      const res = await fetch('/api/templates/upload', {
+      await authenticatedFetch('/api/templates/upload', {
         method: 'POST',
         body: formData,
       })
-      if (!res.ok) throw new Error('Upload failed')
       await fetchTemplates()
       return true
     } catch (err) {
@@ -42,12 +40,10 @@ export function useTemplates() {
 
   const deleteTemplate = useCallback(async (templatePath) => {
     try {
-      const res = await fetch('/api/templates', {
+      await authenticatedFetch('/api/templates', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: templatePath }),
       })
-      if (!res.ok) throw new Error('Delete failed')
       await fetchTemplates()
       return true
     } catch (err) {

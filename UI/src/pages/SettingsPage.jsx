@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSettings } from '../contexts/SettingsContext'
 import { useWebSocket } from '../contexts/WebSocketContext'
 import { useToast } from '../contexts/ToastContext'
+import { api } from '../services/api'
 import {
   Sliders,
   FloppyDisk,
@@ -57,11 +58,8 @@ export default function SettingsPage() {
 
   const fetchSystemStats = async () => {
     try {
-      const res = await fetch('/api/system/stats')
-      if (res.ok) {
-        const data = await res.json()
-        setSystemStats(data)
-      }
+      const data = await api.get('/api/system/stats')
+      setSystemStats(data)
     } catch (err) {
       console.error('Failed to fetch system stats:', err)
     }
@@ -378,11 +376,8 @@ function StorageSettings({ stats, storagePercent }) {
   const handleRefreshStorage = async () => {
     setIsRefreshing(true)
     try {
-      const res = await fetch('/api/system/stats')
-      if (res.ok) {
-        const data = await res.json()
-        // Stats will be updated via parent component
-      }
+      const data = await api.get('/api/system/stats')
+      // Stats will be updated via parent component
     } catch (err) {
       console.error('Failed to refresh storage:', err)
     } finally {

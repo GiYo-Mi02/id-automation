@@ -24,8 +24,9 @@ export function WebSocketProvider({ children }) {
 
     setStatus('connecting')
     
+    // Connect directly to backend WebSocket server on port 8000
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/ws`
+    const wsUrl = `${protocol}//localhost:8000/ws`
     
     try {
       wsRef.current = new WebSocket(wsUrl)

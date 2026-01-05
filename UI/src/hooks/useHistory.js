@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { authenticatedFetch } from '../services/api'
 
 export function useHistory(initialLimit = 50) {
   const [history, setHistory] = useState([])
@@ -10,12 +11,12 @@ export function useHistory(initialLimit = 50) {
     setError(null)
     
     try {
-      const res = await fetch(`/api/history?limit=${limit}`)
-      if (!res.ok) throw new Error('Failed to fetch history')
-      const data = await res.json()
-      setHistory(data)
+      const data = await authenticatedFetch(`/api/history?limit=${limit}`)
+      // Backend returns {history: [], total: N, limit: N}
+      setHistory(data.history || [])
     } catch (err) {
       setError(err.message)
+      setHistory([])
     } finally {
       setLoading(false)
     }
@@ -27,8 +28,7 @@ export function useHistory(initialLimit = 50) {
 
   const clearHistory = useCallback(async () => {
     try {
-      const res = await fetch('/api/history', { method: 'DELETE' })
-      if (!res.ok) throw new Error('Clear failed')
+      await authenticatedFetch('/api/history', { method: 'DELETE' })
       setHistory([])
       return true
     } catch (err) {

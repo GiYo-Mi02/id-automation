@@ -93,7 +93,7 @@ function TemplateSection({ title, templates, active, onSelect, type, onUpload })
 
       {/* Template Grid */}
       <div className="grid grid-cols-3 gap-3">
-        {templates?.map((template, index) => (
+        {(Array.isArray(templates) ? templates : []).map((template, index) => (
           <button
             key={template.path || index}
             onClick={() => onSelect(template)}

@@ -40,22 +40,22 @@
     },
     "back": {
         "guardian_name": {
-            "x": 175,
-            "y": 149,
+            "x": 160,
+            "y": 160,
             "size": 30,
             "color": "#000000",
             "align": "left"
         },
         "address": {
-            "x": 204,
-            "y": 282,
+            "x": 190,
+            "y": 290,
             "size": 30,
             "color": "#000000",
             "align": "left"
         },
         "guardian_contact": {
-            "x": 227,
-            "y": 417,
+            "x": 230,
+            "y": 420,
             "size": 30,
             "color": "#000000",
             "align": "left"

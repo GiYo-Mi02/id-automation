@@ -12,6 +12,7 @@ import {
 } from '@phosphor-icons/react'
 import { Button, Card, Spinner } from '../shared'
 import { useToast } from '../../contexts/ToastContext'
+import { authenticatedFetch } from '../../services/api'
 
 export default function ImportDataSection({ onImportComplete }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -43,22 +44,15 @@ export default function ImportDataSection({ onImportComplete }) {
       const formData = new FormData()
       formData.append('file', file)
 
-      const res = await fetch('/api/students/import/preview', {
+      const data = await authenticatedFetch('/api/students/import/preview', {
         method: 'POST',
         body: formData,
       })
 
-      if (res.ok) {
-        const data = await res.json()
-        setPreview(data)
+      setPreview(data)
         
-        if (!data.valid) {
-          toast.warning('Missing Columns', `Missing: ${data.missing_columns.join(', ')}`)
-        }
-      } else {
-        const error = await res.json()
-        toast.error('Preview Failed', error.detail || 'Could not preview file')
-        setSelectedFile(null)
+      if (!data.valid) {
+        toast.warning('Missing Columns', `Missing: ${data.missing_columns.join(', ')}`)
       }
     } catch (err) {
       console.error('Preview error:', err)
@@ -77,26 +71,20 @@ export default function ImportDataSection({ onImportComplete }) {
       const formData = new FormData()
       formData.append('file', selectedFile)
 
-      const res = await fetch('/api/students/import', {
+      const data = await authenticatedFetch('/api/students/import', {
         method: 'POST',
         body: formData,
       })
 
-      if (res.ok) {
-        const data = await res.json()
-        setImportResult(data)
+      setImportResult(data)
         
-        if (data.errors && data.errors.length > 0) {
-          toast.warning('Import Complete with Errors', `${data.imported} imported, ${data.errors.length} errors`)
-        } else {
-          toast.success('Import Complete', `${data.imported} students imported successfully`)
-        }
-        
-        onImportComplete?.()
+      if (data.errors && data.errors.length > 0) {
+        toast.warning('Import Complete with Errors', `${data.imported} imported, ${data.errors.length} errors`)
       } else {
-        const error = await res.json()
-        toast.error('Import Failed', error.detail || 'Could not import data')
+        toast.success('Import Complete', `Successfully imported ${data.imported} students`)
       }
+        
+      if (onImportComplete) onImportComplete()
     } catch (err) {
       console.error('Import error:', err)
       toast.error('Import Failed', 'An error occurred during import')

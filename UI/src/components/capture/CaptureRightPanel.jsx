@@ -3,6 +3,7 @@ import { clsx } from 'clsx'
 import { ClockCounterClockwise, ArrowsClockwise, Eye, Camera, PencilSimple, CaretLeft, CaretRight, Users, Check, MagnifyingGlass } from '@phosphor-icons/react'
 import { Input, Spinner } from '../shared'
 import { formatDistanceToNow } from '../utils/formatTime'
+import { authenticatedFetch } from '../../services/api'
 
 const ITEMS_PER_PAGE = 10
 
@@ -25,13 +26,12 @@ export default function CaptureRightPanel({
   const fetchStudents = useCallback(async () => {
     setIsLoadingStudents(true)
     try {
-      const res = await fetch('/api/students')
-      if (res.ok) {
-        const data = await res.json()
-        setStudents(data)
-      }
+      const data = await authenticatedFetch('/api/students?page=1&page_size=100')
+      // Backend returns {students: [], total: N, page: 1, page_size: 100}
+      setStudents(data.students || [])
     } catch (err) {
       console.error('Failed to fetch students:', err)
+      setStudents([])
     } finally {
       setIsLoadingStudents(false)
     }
@@ -71,11 +71,12 @@ export default function CaptureRightPanel({
     return []
   }
 
-  const tabData = getTabData()
-  const totalPages = Math.ceil(tabData.length / ITEMS_PER_PAGE)
+  const tabData = getTabData() || []
+  const safeTabData = Array.isArray(tabData) ? tabData : []
+  const totalPages = Math.ceil(safeTabData.length / ITEMS_PER_PAGE)
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
   const endIndex = startIndex + ITEMS_PER_PAGE
-  const paginatedData = tabData.slice(startIndex, endIndex)
+  const paginatedData = safeTabData.slice(startIndex, endIndex)
 
   const handleManualChange = (field, value) => {
     onManualDataChange(prev => ({ ...prev, [field]: value }))
@@ -264,7 +265,7 @@ function HistoryContent({ captures, onView, isEmpty }) {
 
   return (
     <ul className="p-3 space-y-2">
-      {captures.map((capture, index) => (
+      {(Array.isArray(captures) ? captures : []).map((capture, index) => (
         <CaptureItem
           key={`${capture.student_id || capture.id_number}-${capture.timestamp || capture.created_at}-${index}`}
           capture={capture}
@@ -343,7 +344,7 @@ function StudentsContent({ students, onStudentSelect, isEmpty, isLoading, search
 
   return (
     <ul className="p-3 space-y-2">
-      {students.map((student) => (
+      {(Array.isArray(students) ? students : []).map((student) => (
         <StudentItem
           key={student.student_id || student.id_number}
           student={student}
