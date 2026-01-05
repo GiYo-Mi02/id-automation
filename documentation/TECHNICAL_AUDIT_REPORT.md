@@ -462,16 +462,16 @@ export const useDashboardStore = create((set) => ({
 
 ## Appendix B: Security Checklist for Production
 
-- [ ] Replace `allow_origins=["*"]` with specific origins
-- [ ] Implement JWT or session-based authentication
-- [ ] Add HTTPS (currently HTTP only)
-- [ ] Encrypt PII at rest
-- [ ] Add rate limiting
-- [ ] Implement audit logging
-- [ ] Add file upload validation (type, size, malware scan)
-- [ ] Remove default database credentials
-- [ ] Add CSRF protection
-- [ ] Implement proper password hashing if user accounts added
+- [Check] Replace `allow_origins=["*"]` with specific origins
+- [Check] Implement JWT or session-based authentication
+- [Check] Add HTTPS (currently HTTP only)
+- [Check] Encrypt PII at rest
+- [Check] Add rate limiting
+- [Check] Implement audit logging
+- [Check] Add file upload validation (type, size, malware scan)
+- [Check] Remove default database credentials
+- [Check] Add CSRF protection
+- [Check] Implement proper password hashing if user accounts added
 
 ---
 
