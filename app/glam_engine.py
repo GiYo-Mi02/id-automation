@@ -133,14 +133,23 @@ class AIGlamEngine:
         # FIXED INDENTATION HERE
         try:
             print("   Running AI Face Restoration (v1.4)...")
-            if AI_MODEL == "GFPGAN":
-                _, _, output = self.ai_enhancer.enhance(
-                    image, has_aligned=False, only_center_face=True, paste_back=True, weight=1.0
-                )
-                return output
-            elif AI_MODEL == "REALESRGAN":
-                output, _ = self.ai_enhancer.enhance(image)
-                return output
+            
+            # Suppress performance warnings from Cholesky decomposition
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=RuntimeWarning)
+                warnings.filterwarnings('ignore', message='.*Cholesky.*')
+                warnings.filterwarnings('ignore', message='.*incomplete Cholesky.*')
+                
+                if AI_MODEL == "GFPGAN":
+                    _, _, output = self.ai_enhancer.enhance(
+                        image, has_aligned=False, only_center_face=True, paste_back=True, weight=1.0
+                    )
+                    print("   Face restored")
+                    return output
+                elif AI_MODEL == "REALESRGAN":
+                    output, _ = self.ai_enhancer.enhance(image)
+                    return output
         except Exception as e: 
             print(f"   AI Restoration Failed: {e}")
             return image

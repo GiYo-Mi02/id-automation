@@ -29,7 +29,7 @@ except ImportError:
 CONFIG = {
     'INPUT_FOLDER': r'data/input',
     'OUTPUT_FOLDER': r'data/output',
-    'TEMPLATE_FOLDER': r'data/templates',
+    'TEMPLATE_FOLDER': r'data/templates',  # lowercase normalized
     'LAYOUT_FILE': r'data/layout.json',
     'SETTINGS_FILE': r'data/settings.json',
     'CARD_SIZE': (591, 1004), 
@@ -66,7 +66,7 @@ class SchoolIDProcessor:
         self.settings = self.load_settings()
 
     def _ensure_folders(self):
-        for folder in [self.config['INPUT_FOLDER'], self.config['OUTPUT_FOLDER']]:
+        for folder in [self.config['INPUT_FOLDER'], self.config['OUTPUT_FOLDER'], self.config['TEMPLATE_FOLDER']]:
             Path(folder).mkdir(parents=True, exist_ok=True)
 
     def load_settings(self):
@@ -220,11 +220,6 @@ class SchoolIDProcessor:
             for key in ['name', 'lrn', 'grade_level', 'section']:
                 if key in front_layout:
                     config = front_layout[key].copy()
-                    if key == 'section':
-                        if '5' in data['grade_level']: 
-                            config['y'] += 45
-                        if '6' in data['grade_level']: 
-                            config['y'] += 90
                     self.draw_text(draw, data[key], config, self.config['CARD_SIZE'][0])
     
             front_path = Path(self.config['OUTPUT_FOLDER']) / f"{data['id']}_FRONT.png"

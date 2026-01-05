@@ -23,18 +23,20 @@ def sync_csv_to_db():
             for row in reader:
                 sql = """
                     INSERT INTO students 
-                    (id_number, full_name, lrn, section, guardian_name, address, guardian_contact) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s) 
+                    (id_number, full_name, lrn, grade_level, section, guardian_name, address, guardian_contact) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
                     ON DUPLICATE KEY UPDATE 
                     full_name = VALUES(full_name), 
-                    lrn = VALUES(lrn), 
+                    lrn = VALUES(lrn),
+                    grade_level = VALUES(grade_level), 
                     section = VALUES(section),
                     guardian_name = VALUES(guardian_name),
                     address = VALUES(address),
                     guardian_contact = VALUES(guardian_contact)
                 """
                 val = (
-                    row['ID_Number'], row['Full_Name'], row['LRN'], row['Section'],
+                    row['ID_Number'], row['Full_Name'], row['LRN'], 
+                    row.get('Grade_Level', ''), row['Section'],
                     row['Guardian_Name'], row['Address'], row['Guardian_Contact']
                 )
                 cursor.execute(sql, val)

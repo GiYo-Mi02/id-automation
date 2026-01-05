@@ -1,14 +1,15 @@
 import mysql.connector
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 
-# Database Config
+# Database Config (with environment variable support)
 DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'root',
-    'password': '',
-    'database': 'school_id_system'
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'user': os.getenv('DB_USER', 'root'),
+    'password': os.getenv('DB_PASSWORD', ''),
+    'database': os.getenv('DB_NAME', 'school_id_system')
 }
 
 def get_db_connection():
@@ -41,12 +42,13 @@ def init_db():
     if not conn: return
     cursor = conn.cursor()
     
-    # Create Students Table (New Structure)
+    # Create Students Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS students (
         id_number VARCHAR(50) PRIMARY KEY,
         full_name VARCHAR(100),
         lrn VARCHAR(50),
+        grade_level VARCHAR(20),
         section VARCHAR(50),
         guardian_name VARCHAR(100),
         address VARCHAR(255),
