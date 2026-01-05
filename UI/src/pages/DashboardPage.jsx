@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useWebSocket } from '../contexts/WebSocketContext'
 import { useToast } from '../contexts/ToastContext'
 import DashboardTopBar from '../components/dashboard/DashboardTopBar'
-import TemplateSidebar from '../components/dashboard/TemplateSidebar'
-import LatestOutputPanel from '../components/dashboard/LatestOutputPanel'
+import StatsGrid from '../components/dashboard/StatsGrid'
+import LivePreviewColumn from '../components/dashboard/LivePreviewColumn'
 import StudentTable from '../components/dashboard/StudentTable'
 import EditStudentModal from '../components/dashboard/EditStudentModal'
 import ViewIDModal from '../components/dashboard/ViewIDModal'
@@ -140,28 +140,17 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-navy-950">
+    <div className="h-full flex flex-col bg-slate-950 text-slate-200 font-sans">
       <DashboardTopBar status={status} />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Template Sidebar */}
-        <TemplateSidebar
-          templates={templates}
-          activeTemplate={activeTemplate}
-          onTemplateSelect={handleTemplateSelect}
-          onUpload={fetchTemplates}
-        />
+      <div className="flex-1 p-6 overflow-hidden flex flex-col">
+        {/* Top Row: Stats */}
+        <StatsGrid totalIds={students.length} />
 
-        {/* Main Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="space-y-6">
-            <LatestOutputPanel
-              output={latestOutput}
-              onRefresh={fetchLatestOutput}
-              onView={() => latestOutput && handleViewStudent(latestOutput)}
-              onRegenerate={() => latestOutput && handleRegenerate(latestOutput)}
-            />
-
+        {/* Main Split */}
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+          {/* Left: Recent Activity (70% -> col-span-8) */}
+          <div className="lg:col-span-8 h-full min-h-0">
             <StudentTable
               students={students}
               isLoading={isLoading}
@@ -169,6 +158,18 @@ export default function DashboardPage() {
               onEdit={handleEditStudent}
               onView={handleViewStudent}
               onRegenerate={handleRegenerate}
+            />
+          </div>
+
+          {/* Right: Live Preview (30% -> col-span-4) */}
+          <div className="lg:col-span-4 h-full min-h-0">
+            <LivePreviewColumn
+              latestOutput={latestOutput}
+              templates={templates}
+              activeTemplate={activeTemplate}
+              onTemplateSelect={handleTemplateSelect}
+              onRegenerate={() => latestOutput && handleRegenerate(latestOutput)}
+              onView={() => latestOutput && handleViewStudent(latestOutput)}
             />
           </div>
         </div>

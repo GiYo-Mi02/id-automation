@@ -3,7 +3,8 @@ import { useToast } from '../contexts/ToastContext'
 import EditorTopBar from '../components/editor/EditorTopBar'
 import LayersPanel from '../components/editor/LayersPanel'
 import EditorCanvas from '../components/editor/EditorCanvas'
-import PropertiesPanel from '../components/editor/PropertiesPanel'
+import DynamicPropertiesPanel from '../components/editor/DynamicPropertiesPanel'
+import FloatingToolbar from '../components/editor/FloatingToolbar'
 
 const defaultLayout = {
   front: {
@@ -128,13 +129,15 @@ export default function EditorPage() {
   const currentTemplate = selectedTemplate[activeView]
 
   return (
-    <div className="h-full flex flex-col bg-navy-950">
+    <div className="h-full flex flex-col bg-slate-950">
       <EditorTopBar
         activeView={activeView}
         onViewChange={setActiveView}
         templates={templates[activeView]}
         selectedTemplate={currentTemplate}
         onTemplateChange={(t) => setSelectedTemplate(prev => ({ ...prev, [activeView]: t }))}
+        onSave={handleSaveLayout}
+        isSaving={isSaving}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -155,21 +158,30 @@ export default function EditorPage() {
           onPositionChange={handlePositionChange}
           onSizeChange={handleSizeChange}
           zoom={zoom}
+          showGrid={showGrid}
+          snapToGrid={snapToGrid}
+        />
+
+        {/* Floating Toolbar (Figma-style) */}
+        <FloatingToolbar
+          zoom={zoom}
           onZoomChange={setZoom}
           showGrid={showGrid}
           onShowGridChange={setShowGrid}
           snapToGrid={snapToGrid}
           onSnapToGridChange={setSnapToGrid}
+          onUndo={() => {}}
+          onRedo={() => {}}
+          canUndo={false}
+          canRedo={false}
         />
 
-        {/* Properties Panel */}
-        <PropertiesPanel
+        {/* Dynamic Properties Panel (Right) */}
+        <DynamicPropertiesPanel
           selectedElement={selectedElement}
           elementData={selectedElement ? currentLayout[selectedElement] : null}
           onUpdate={(updates) => selectedElement && handleElementUpdate(selectedElement, updates)}
           onReset={handleResetPosition}
-          onSave={handleSaveLayout}
-          isSaving={isSaving}
         />
       </div>
     </div>

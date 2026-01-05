@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
-import { PencilRuler, CaretDown } from '@phosphor-icons/react'
-import { Dropdown } from '../shared'
+import { PencilRuler, CaretDown, FloppyDisk } from '@phosphor-icons/react'
+import { Dropdown, Button } from '../shared'
 
 export default function EditorTopBar({
   activeView,
@@ -8,6 +8,8 @@ export default function EditorTopBar({
   templates,
   selectedTemplate,
   onTemplateChange,
+  onSave,
+  isSaving,
 }) {
   const templateOptions = templates?.map((t, i) => ({
     value: t.path || i,
@@ -48,17 +50,31 @@ export default function EditorTopBar({
         </button>
       </div>
 
-      {/* Template Dropdown */}
-      <Dropdown
-        value={selectedTemplate?.path || ''}
-        onChange={(value) => {
-          const template = templates?.find(t => t.path === value)
-          if (template) onTemplateChange(template)
-        }}
-        options={templateOptions}
-        placeholder="Select template..."
-        className="w-52"
-      />
+      {/* Right Side */}
+      <div className="flex items-center gap-3">
+        {/* Template Dropdown */}
+        <Dropdown
+          value={selectedTemplate?.path || ''}
+          onChange={(value) => {
+            const template = templates?.find(t => t.path === value)
+            if (template) onTemplateChange(template)
+          }}
+          options={templateOptions}
+          placeholder="Select template..."
+          className="w-52"
+        />
+        
+        {/* Save Button */}
+        <Button
+          variant="primary"
+          icon={FloppyDisk}
+          onClick={onSave}
+          loading={isSaving}
+          className="px-6"
+        >
+          SAVE LAYOUT
+        </Button>
+      </div>
     </header>
   )
 }

@@ -4,7 +4,7 @@ export default function Card({ className, children, ...props }) {
   return (
     <div
       className={clsx(
-        'bg-navy-900 border border-navy-700 rounded-xl shadow-lg',
+        'bg-slate-900/50 border border-slate-800 rounded-xl backdrop-blur-sm',
         className
       )}
       {...props}
@@ -16,7 +16,7 @@ export default function Card({ className, children, ...props }) {
 
 Card.Header = function CardHeader({ className, children }) {
   return (
-    <div className={clsx('px-5 py-4 border-b border-navy-700', className)}>
+    <div className={clsx('px-5 py-4 border-b border-slate-800', className)}>
       {children}
     </div>
   )
@@ -32,7 +32,7 @@ Card.Body = function CardBody({ className, children }) {
 
 Card.Footer = function CardFooter({ className, children }) {
   return (
-    <div className={clsx('px-5 py-4 border-t border-navy-700 bg-navy-850 rounded-b-xl', className)}>
+    <div className={clsx('px-5 py-4 border-t border-slate-800 bg-slate-900/30 rounded-b-xl', className)}>
       {children}
     </div>
   )

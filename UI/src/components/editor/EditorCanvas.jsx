@@ -96,13 +96,15 @@ export default function EditorCanvas({
   return (
     <div
       ref={containerRef}
-      className="flex-1 bg-black overflow-auto relative"
+      className="flex-1 bg-slate-950 overflow-auto relative"
       style={{
         backgroundImage: showGrid
-          ? `radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)`
+          ? `radial-gradient(circle, #475569 1px, transparent 1px)`
           : 'none',
-        backgroundSize: '24px 24px',
+        backgroundSize: '20px 20px',
+        backgroundPosition: 'center center',
       }}
+      onClick={handleCanvasClick}
     >
       {/* Canvas */}
       <div
@@ -117,14 +119,13 @@ export default function EditorCanvas({
         <div
           className="relative bg-white rounded-lg shadow-2xl overflow-hidden"
           style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}
-          onClick={handleCanvasClick}
         >
           {/* Template Background */}
           {template && (
             <img
               src={template.path || template}
               alt="Template"
-              className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+              className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
             />
           )}
 
@@ -142,72 +143,6 @@ export default function EditorCanvas({
           ))}
         </div>
       </div>
-
-      {/* Toolbar */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4 px-4 py-2 bg-navy-900 border border-navy-700 rounded-xl shadow-xl">
-        {/* Zoom Controls */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={zoomOut}
-            className="w-8 h-8 flex items-center justify-center rounded-md bg-navy-800 border border-navy-700 text-slate-400 hover:text-blue-400 hover:bg-navy-700 transition-colors"
-          >
-            <Minus size={16} weight="bold" />
-          </button>
-          <span className="w-14 text-center text-sm text-slate-400 tabular-nums">
-            {zoom}%
-          </span>
-          <button
-            onClick={zoomIn}
-            className="w-8 h-8 flex items-center justify-center rounded-md bg-navy-800 border border-navy-700 text-slate-400 hover:text-blue-400 hover:bg-navy-700 transition-colors"
-          >
-            <Plus size={16} weight="bold" />
-          </button>
-        </div>
-
-        <div className="w-px h-6 bg-navy-700" />
-
-        {/* Grid Toggle */}
-        <label className="flex items-center gap-2 cursor-pointer">
-          <GridFour size={16} className={showGrid ? 'text-blue-400' : 'text-slate-500'} />
-          <span className="text-xs text-slate-400">Grid</span>
-          <input
-            type="checkbox"
-            checked={showGrid}
-            onChange={(e) => onShowGridChange(e.target.checked)}
-            className="sr-only"
-          />
-          <div className={clsx(
-            'w-8 h-4 rounded-full transition-colors relative',
-            showGrid ? 'bg-blue-600' : 'bg-navy-700'
-          )}>
-            <div className={clsx(
-              'absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all',
-              showGrid ? 'left-[18px]' : 'left-0.5'
-            )} />
-          </div>
-        </label>
-
-        {/* Snap Toggle */}
-        <label className="flex items-center gap-2 cursor-pointer">
-          <MagnetStraight size={16} className={snapToGrid ? 'text-blue-400' : 'text-slate-500'} />
-          <span className="text-xs text-slate-400">Snap</span>
-          <input
-            type="checkbox"
-            checked={snapToGrid}
-            onChange={(e) => onSnapToGridChange(e.target.checked)}
-            className="sr-only"
-          />
-          <div className={clsx(
-            'w-8 h-4 rounded-full transition-colors relative',
-            snapToGrid ? 'bg-blue-600' : 'bg-navy-700'
-          )}>
-            <div className={clsx(
-              'absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all',
-              snapToGrid ? 'left-[18px]' : 'left-0.5'
-            )} />
-          </div>
-        </label>
-      </div>
     </div>
   )
 }
@@ -220,10 +155,10 @@ function DraggableElement({ elementKey, data, isSelected, isPhoto, onMouseDown, 
       <div
         onMouseDown={onMouseDown}
         className={clsx(
-          'absolute flex items-center justify-center cursor-move transition-all duration-100',
+          'absolute flex items-center justify-center cursor-move transition-all duration-200 group',
           isSelected
-            ? 'border-2 border-yellow-400 bg-yellow-400/15'
-            : 'border-2 border-dashed border-blue-500/40 bg-blue-500/5 hover:border-blue-400 hover:bg-blue-500/10'
+            ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-white bg-blue-400/10'
+            : 'ring-2 ring-slate-400 ring-dashed ring-offset-2 ring-offset-white hover:ring-blue-300'
         )}
         style={{
           left: data.x,
@@ -233,10 +168,9 @@ function DraggableElement({ elementKey, data, isSelected, isPhoto, onMouseDown, 
           borderRadius: 4,
         }}
       >
-        <span className="text-sm font-bold uppercase pointer-events-none" style={{ color: 'rgba(0,0,0,0.4)' }}>
+        <span className="text-sm font-bold uppercase text-slate-400 pointer-events-none select-none">
           {label}
         </span>
-        {isSelected && <SelectionHandles />}
       </div>
     )
   }
@@ -245,10 +179,10 @@ function DraggableElement({ elementKey, data, isSelected, isPhoto, onMouseDown, 
     <div
       onMouseDown={onMouseDown}
       className={clsx(
-        'absolute cursor-move transition-all duration-100 whitespace-nowrap px-2 py-1 rounded',
+        'absolute cursor-move transition-all duration-200 whitespace-nowrap px-2 py-1 rounded select-none',
         isSelected
-          ? 'border-2 border-yellow-400 bg-yellow-400/10'
-          : 'border border-transparent hover:border-blue-400 hover:bg-blue-500/5'
+          ? 'ring-2 ring-blue-400 bg-blue-400/10'
+          : 'ring-1 ring-transparent hover:ring-blue-300 hover:bg-blue-500/5'
       )}
       style={{
         left: data.x,
@@ -259,10 +193,12 @@ function DraggableElement({ elementKey, data, isSelected, isPhoto, onMouseDown, 
       }}
     >
       {label}
-      {isSelected && <PositionHandles />}
     </div>
   )
 }
+
+/* Old toolbar and duplicate elements removed - see FloatingToolbar and DynamicPropertiesPanel components */
+/* SelectionHandles and PositionHandles kept for visual feedback */
 
 function SelectionHandles() {
   const handlePositions = [
@@ -292,3 +228,4 @@ function SelectionHandles() {
 function PositionHandles() {
   return null // Text elements don't have resize handles
 }
+
