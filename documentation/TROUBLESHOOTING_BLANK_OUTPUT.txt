@@ -1,0 +1,94 @@
+"""
+QUICK TROUBLESHOOTING GUIDE
+===========================
+
+If you get blank/white output after photo processing, run this checklist:
+
+1. CHECK ACTIVE TEMPLATE
+   Run: python tools/test_template_load.py
+   Expected: Shows active template with layers and background files
+
+2. CHECK LOGS
+   Look for these ERROR messages in terminal:
+   - "CRITICAL: Background file NOT FOUND" → Background path is wrong
+   - "NO LAYERS found for front side" → Template saved without layers
+   - "INVALID template structure" → Database has malformed JSON
+
+3. COMMON FIXES
+
+   Issue: No active template
+   Fix: Go to Editor → Click "Activate" on a template
+   
+   Issue: Background NOT FOUND
+   Fix: Re-import background in Editor and save
+   
+   Issue: No layers rendering
+   Fix: Check that layers are visible (eye icon) and save again
+   
+   Issue: Wrong template type
+   Fix: Activation clears all active templates - only ONE should be active
+
+4. EXPECTED LOG OUTPUT (GOOD):
+   
+   INFO - ✓ Loaded active template: New Template (ID: 7, Type: teacher)
+   INFO - Template structure: Front BG=True, Front Layers=3, Back BG=True, Back Layers=4
+   INFO - Rendering front side with 3 layers
+   INFO - Loading background: data\\templates\\teacher\\file.png
+   DEBUG - Rendering text layer: text-123 - name
+   DEBUG - Rendering image layer: image-456
+
+5. PATH RESOLUTION LOGIC
+
+   Database stores:    /api/templates/backgrounds/teacher/file.png
+   Renderer converts:  data/templates/teacher/file.png
+   
+   If path is wrong, you'll see:
+   ERROR - CRITICAL: Background file NOT FOUND at [path]
+
+6. MANUAL DATABASE CHECK
+
+   Run SQL query:
+   
+   SELECT id, name, is_active, 
+          LENGTH(front_layers) as front_size,
+          LENGTH(back_layers) as back_size
+   FROM id_templates 
+   WHERE is_active = TRUE;
+   
+   Expected:
+   - Only ONE row (one active template)
+   - front_size and back_size > 100 (has layer data)
+
+7. FILE SYSTEM CHECK
+
+   Verify background files exist:
+   
+   dir data\\templates\\teacher\\*
+   dir data\\templates\\student\\*
+   
+   Expected: PNG/JPG files with UUID-style names
+
+8. FRONTEND SAVE VERIFICATION
+
+   In browser console after clicking "Save":
+   - Should see: "Template Saved" toast
+   - Check Network tab for /api/templates/db/{id} PUT request
+   - Response should include all layers in front/back fields
+
+9. EMERGENCY FIX
+
+   If nothing works:
+   1. Create NEW template in Editor
+   2. Import background fresh
+   3. Add at least one text layer
+   4. Save
+   5. Activate
+   6. Run diagnostic: python tools/test_template_load.py
+
+10. GET HELP
+
+    Share output of:
+    - python tools/test_template_load.py
+    - Last 50 lines of backend terminal logs
+    - Screenshot of Editor showing template structure
+"""

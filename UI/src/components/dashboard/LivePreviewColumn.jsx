@@ -1,6 +1,9 @@
-import { Eye, ArrowsClockwise, Image, Check } from '@phosphor-icons/react'
+import { useState } from 'react'
+import { Eye, ArrowsClockwise, Image, Check, CircleNotch } from '@phosphor-icons/react'
 import { Card, Button } from '../shared'
 import { formatDistanceToNow } from '../utils/formatTime'
+import { useToast } from '../../contexts/ToastContext'
+import { api } from '../../services/api'
 import { clsx } from 'clsx'
 
 export default function LivePreviewColumn({ 
@@ -9,8 +12,42 @@ export default function LivePreviewColumn({
   activeTemplate, 
   onTemplateSelect, 
   onRegenerate, 
-  onView 
+  onView,
+  onTemplatesRefresh, // New prop for refreshing template list
 }) {
+  const toast = useToast()
+  const [activatingId, setActivatingId] = useState(null)
+
+  // Handle template activation - persists to database
+  const handleTemplateActivate = async (type, template) => {
+    // Optimistic update first
+    onTemplateSelect(type, template)
+    
+    // If template has a numeric ID, persist activation to database
+    const templateId = parseInt(template.id)
+    if (templateId && !isNaN(templateId)) {
+      setActivatingId(templateId)
+      try {
+        const response = await api.post(`/api/templates/db/${templateId}/activate`)
+        const templateName = response.name || response.templateName || template.name || template.template_name || 'Template'
+        toast.success('Template Activated', `${templateName} is now active`)
+        
+        // Refresh template list after successful activation
+        if (onTemplatesRefresh) {
+          onTemplatesRefresh()
+        }
+      } catch (err) {
+        console.error('Failed to activate template:', err.message || JSON.stringify(err))
+        toast.error('Activation Failed', 'Could not save template selection')
+      } finally {
+        setActivatingId(null)
+      }
+    } else {
+      console.warn('Template activation skipped: template.id is not numeric:', template.id)
+      toast.info('Info', 'This template cannot be activated (legacy format)')
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4 h-full">
       {/* Live Preview Card */}
@@ -84,53 +121,110 @@ export default function LivePreviewColumn({
       <Card className="h-[300px] flex flex-col">
         <div className="px-4 py-3 border-b border-slate-800">
             <h3 className="text-sm font-bold text-slate-300">QUICK TEMPLATES</h3>
+            <p className="text-xs text-slate-500 mt-1">Click to activate</p>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            {/* Front Templates */}
-            <div className="px-2 py-1 text-xs font-bold text-slate-500 uppercase tracking-wider">Front</div>
-            {(Array.isArray(templates?.front) ? templates.front : []).map(t => (
-                <TemplateItem 
-                    key={t.path} 
-                    template={t} 
-                    isActive={activeTemplate.front?.path === t.path}
-                    onClick={() => onTemplateSelect('front', t)}
-                />
-            ))}
-            
-            {/* Back Templates */}
-            <div className="px-2 py-1 text-xs font-bold text-slate-500 uppercase tracking-wider mt-4">Back</div>
-            {(Array.isArray(templates?.back) ? templates.back : []).map(t => (
-                <TemplateItem 
-                    key={t.path} 
-                    template={t} 
-                    isActive={activeTemplate.back?.path === t.path}
-                    onClick={() => onTemplateSelect('back', t)}
-                />
-            ))}
+            {/* Check if we have any templates */}
+            {(templates?.front?.length === 0 && templates?.back?.length === 0) ? (
+              <div className="text-center py-8 text-slate-600">
+                <p className="text-sm mb-2">No templates available</p>
+                <p className="text-xs">Create a template in the Editor</p>
+              </div>
+            ) : (
+              <>
+                {/* Front Templates */}
+                {templates?.front?.length > 0 && (
+                  <>
+                    <div className="px-2 py-1 text-xs font-bold text-slate-500 uppercase tracking-wider">Active Templates</div>
+                    {templates.front.map(t => {
+                      // Only show templates with numeric IDs (database templates)
+                      const numericId = parseInt(t.id)
+                      if (!numericId || isNaN(numericId)) return null
+                      
+                      return (
+                        <TemplateItem 
+                          key={t.id} 
+                          template={t} 
+                          isActive={activeTemplate.front?.id === t.id || t.is_active}
+                          isActivating={activatingId === numericId}
+                          onClick={() => handleTemplateActivate('front', t)}
+                        />
+                      )
+                    })}
+                  </>
+                )}
+                
+                {/* Back Templates (if any) */}
+                {templates?.back?.length > 0 && (
+                  <>
+                    <div className="px-2 py-1 text-xs font-bold text-slate-500 uppercase tracking-wider mt-4">Back Templates</div>
+                    {templates.back.map(t => {
+                      const numericId = parseInt(t.id)
+                      if (!numericId || isNaN(numericId)) return null
+                      
+                      return (
+                        <TemplateItem 
+                          key={t.id} 
+                          template={t} 
+                          isActive={activeTemplate.back?.id === t.id || t.is_active}
+                          isActivating={activatingId === numericId}
+                          onClick={() => handleTemplateActivate('back', t)}
+                        />
+                      )
+                    })}
+                  </>
+                )}
+              </>
+            )}
         </div>
       </Card>
     </div>
   )
 }
 
-function TemplateItem({ template, isActive, onClick }) {
+function TemplateItem({ template, isActive, isActivating, onClick }) {
+    // Get template name from either field
+    const templateName = template.templateName || template.name || template.template_name || 'Untitled'
+    
+    // Get preview image - try background image or placeholder
+    const previewSrc = template.front?.backgroundImage || 
+                       template.canvas?.backgroundImage || 
+                       template.preview || 
+                       template.path || 
+                       null
+    
     return (
         <button 
             onClick={onClick}
+            disabled={isActivating}
             className={clsx(
                 "w-full flex items-center gap-3 p-2 rounded-lg transition-all text-left group",
-                isActive ? "bg-blue-500/10 border border-blue-500/50" : "hover:bg-slate-800 border border-transparent"
+                isActive ? "bg-blue-500/10 border border-blue-500/50" : "hover:bg-slate-800 border border-transparent",
+                isActivating && "opacity-70 cursor-wait"
             )}
         >
             <div className="h-10 w-16 bg-slate-800 rounded overflow-hidden relative border border-slate-700">
-                <img src={template.preview || template.path} className="w-full h-full object-cover" alt="Template" />
+                {previewSrc ? (
+                  <img src={previewSrc} className="w-full h-full object-cover" alt="Template" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Image size={20} className="text-slate-600" />
+                  </div>
+                )}
             </div>
             <div className="flex-1 min-w-0">
                 <p className={clsx("text-sm font-medium truncate", isActive ? "text-blue-400" : "text-slate-300 group-hover:text-white")}>
-                    {template.name}
+                    {templateName}
+                </p>
+                <p className="text-xs text-slate-500 truncate">
+                  {template.templateType || template.template_type || 'student'} • {template.schoolLevel || template.school_level || 'all'}
                 </p>
             </div>
-            {isActive && <Check size={16} className="text-blue-400" />}
+            {isActivating ? (
+                <CircleNotch size={16} className="text-blue-400 animate-spin" />
+            ) : isActive ? (
+                <Check size={16} className="text-blue-400" />
+            ) : null}
         </button>
     )
 }

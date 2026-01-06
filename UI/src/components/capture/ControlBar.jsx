@@ -1,6 +1,13 @@
 import { clsx } from 'clsx'
-import { CameraPlus, Database, PencilSimple } from '@phosphor-icons/react'
+import { CameraPlus, Database, PencilSimple, Student, Chalkboard, Users } from '@phosphor-icons/react'
 import { Dropdown, Button } from '../shared'
+
+// Entity type configuration
+const ENTITY_TYPES = [
+  { value: 'student', label: 'Student', icon: Student, color: 'blue' },
+  { value: 'teacher', label: 'Teacher', icon: Chalkboard, color: 'green' },
+  { value: 'staff', label: 'Staff', icon: Users, color: 'yellow' },
+]
 
 export default function ControlBar({
   cameras,
@@ -8,7 +15,11 @@ export default function ControlBar({
   onCameraChange,
   inputMode,
   onInputModeChange,
+  entityType = 'student',
+  onEntityTypeChange,
   selectedStudent,
+  selectedTeacher,
+  selectedStaff,
   manualData,
   isCapturing,
 }) {
@@ -18,24 +29,70 @@ export default function ControlBar({
     window.dispatchEvent(event)
   }
 
+  // Get the currently selected entity based on type
+  const getSelectedEntity = () => {
+    if (entityType === 'student') return selectedStudent
+    if (entityType === 'teacher') return selectedTeacher
+    if (entityType === 'staff') return selectedStaff
+    return null
+  }
+
   // Get display text for current selection
   const getSelectionDisplay = () => {
-    if (inputMode === 'database' && selectedStudent) {
-      const studentId = selectedStudent.student_id || selectedStudent.id_number
-      const studentName = selectedStudent.full_name || ''
-      return `${studentId} - ${studentName}`
+    const entity = getSelectedEntity()
+    
+    if (inputMode === 'database' && entity) {
+      const id = entity.student_id || entity.id_number || entity.employee_id || ''
+      const name = entity.full_name || ''
+      return `${id} - ${name}`
     }
-    if (inputMode === 'manual' && manualData.id_number) {
-      return manualData.id_number
+    if (inputMode === 'manual' && (manualData.id_number || manualData.employee_id)) {
+      return manualData.id_number || manualData.employee_id
     }
-    return inputMode === 'database' ? 'Select student from sidebar →' : 'Enter details in sidebar →'
+    
+    const entityLabel = ENTITY_TYPES.find(e => e.value === entityType)?.label || 'Entity'
+    return inputMode === 'database' 
+      ? `Select ${entityLabel.toLowerCase()} from sidebar →` 
+      : 'Enter details in sidebar →'
+  }
+
+  // Get badge color for entity type
+  const getEntityColor = () => {
+    const entity = ENTITY_TYPES.find(e => e.value === entityType)
+    return entity?.color || 'blue'
   }
 
   return (
     <div className="card">
       <div className="p-4">
         {/* Control Row */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {/* Entity Type Selector */}
+          <div>
+            <label className="label">Entity Type</label>
+            <div className="h-11 p-1 bg-navy-800 border border-navy-700 rounded-lg flex gap-1">
+              {ENTITY_TYPES.map(({ value, label, icon: Icon, color }) => (
+                <button
+                  key={value}
+                  onClick={() => onEntityTypeChange?.(value)}
+                  className={clsx(
+                    'flex-1 h-full rounded-md text-xs font-bold uppercase tracking-wide transition-all duration-200',
+                    'flex items-center justify-center gap-1',
+                    entityType === value
+                      ? color === 'blue' ? 'bg-blue-600 text-white shadow-md' :
+                        color === 'green' ? 'bg-green-600 text-white shadow-md' :
+                        'bg-yellow-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-navy-700'
+                  )}
+                  title={label}
+                >
+                  <Icon size={14} weight="bold" />
+                  <span className="hidden lg:inline">{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Camera Select */}
           <Dropdown
             label="Camera Source"
@@ -47,7 +104,7 @@ export default function ControlBar({
 
           {/* Input Mode Toggle */}
           <div>
-            <label className="label">Student Data</label>
+            <label className="label">Data Source</label>
             <div className="h-11 p-1 bg-navy-800 border border-navy-700 rounded-full flex">
               <button
                 onClick={() => onInputModeChange('database')}
@@ -79,12 +136,21 @@ export default function ControlBar({
           </div>
 
           {/* Current Selection Display */}
-          <div className="md:col-span-1">
+          <div>
             <label className="label">Current Selection</label>
-            <div className="h-11 px-4 flex items-center bg-navy-800 border border-navy-700 rounded-lg">
+            <div className="h-11 px-4 flex items-center gap-2 bg-navy-800 border border-navy-700 rounded-lg">
+              {/* Entity Type Badge */}
+              <span className={clsx(
+                'px-1.5 py-0.5 text-[10px] font-bold uppercase rounded',
+                entityType === 'student' ? 'bg-blue-600/20 text-blue-400' :
+                entityType === 'teacher' ? 'bg-green-600/20 text-green-400' :
+                'bg-yellow-600/20 text-yellow-400'
+              )}>
+                {entityType.charAt(0)}
+              </span>
               <span className={clsx(
                 'text-sm truncate',
-                (inputMode === 'database' && selectedStudent) || (inputMode === 'manual' && manualData.id_number)
+                getSelectedEntity() || (manualData.id_number || manualData.employee_id)
                   ? 'text-slate-200 font-medium'
                   : 'text-slate-500'
               )}>

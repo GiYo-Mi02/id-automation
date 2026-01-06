@@ -16,6 +16,8 @@ import {
   ChartBar,
   Spinner as SpinnerIcon,
   ArrowsClockwise,
+  Chalkboard,
+  UserCircle,
 } from '@phosphor-icons/react'
 import { Button, Toggle, Slider, Card, Spinner } from '../components/shared'
 import ImportDataSection from '../components/settings/ImportDataSection'
@@ -323,6 +325,112 @@ function CameraSettings({ settings, onChange, cameras, selectedCamera, onCameraC
 
 // Database Settings Section
 function DatabaseSettings({ stats }) {
+  const toast = useToast()
+  const [showClearModal, setShowClearModal] = useState(false)
+  const [clearStep, setClearStep] = useState(1)
+  const [clearType, setClearType] = useState(null)
+  const [confirmText, setConfirmText] = useState('')
+  const [isClearing, setIsClearing] = useState(false)
+  const [dbStatus, setDbStatus] = useState(null)
+
+  // Fetch database status
+  useEffect(() => {
+    fetchDbStatus()
+  }, [])
+
+  const fetchDbStatus = async () => {
+    try {
+      const data = await api.get('/api/system/database/status')
+      setDbStatus(data)
+    } catch (err) {
+      console.error('Failed to fetch database status:', err)
+    }
+  }
+
+  const CLEAR_OPTIONS = [
+    { 
+      id: 'students', 
+      label: 'Clear Students Only', 
+      description: 'Remove all student records and their generated IDs',
+      confirmText: 'DELETE STUDENTS',
+      danger: 'high',
+    },
+    { 
+      id: 'teachers', 
+      label: 'Clear Teachers Only', 
+      description: 'Remove all teacher records and their generated IDs',
+      confirmText: 'DELETE TEACHERS',
+      danger: 'high',
+    },
+    { 
+      id: 'staff', 
+      label: 'Clear Staff Only', 
+      description: 'Remove all staff records and their generated IDs',
+      confirmText: 'DELETE STAFF',
+      danger: 'high',
+    },
+    { 
+      id: 'history', 
+      label: 'Clear History Only', 
+      description: 'Remove all capture history, keep student/teacher data',
+      confirmText: 'DELETE HISTORY',
+      danger: 'medium',
+    },
+    { 
+      id: 'all', 
+      label: 'Full System Reset', 
+      description: 'WARNING: Removes ALL data including students, teachers, staff, history, and generated IDs',
+      confirmText: 'RESET SYSTEM',
+      danger: 'critical',
+    },
+  ]
+
+  const selectedOption = CLEAR_OPTIONS.find(o => o.id === clearType)
+  const isConfirmValid = confirmText === selectedOption?.confirmText
+
+  const handleStartClear = (type) => {
+    setClearType(type)
+    setClearStep(1)
+    setConfirmText('')
+    setShowClearModal(true)
+  }
+
+  const handleNextStep = () => {
+    if (clearStep < 3) {
+      setClearStep(clearStep + 1)
+    }
+  }
+
+  const handleClear = async () => {
+    if (!isConfirmValid) return
+    
+    setIsClearing(true)
+    try {
+      await api.post('/api/system/database/clear', {
+        clear_type: clearType,
+        confirm_text: confirmText,
+      })
+      
+      toast.success('Data Cleared', `Successfully cleared ${clearType} data`)
+      setShowClearModal(false)
+      setClearStep(1)
+      setConfirmText('')
+      fetchDbStatus()
+    } catch (err) {
+      console.error('Clear failed:', err)
+      toast.error('Clear Failed', err.message || 'Could not clear data')
+    } finally {
+      setIsClearing(false)
+    }
+  }
+
+  const handleCloseModal = () => {
+    setShowClearModal(false)
+    setClearStep(1)
+    setConfirmText('')
+    setClearType(null)
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -338,8 +446,30 @@ function DatabaseSettings({ stats }) {
               <ChartBar size={20} className="text-blue-400" weight="duotone" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white tabular-nums">{stats.completedJobs}</p>
-              <p className="text-xs text-slate-500">Total Records</p>
+              <p className="text-2xl font-bold text-white tabular-nums">{dbStatus?.total_students || stats.completedJobs || 0}</p>
+              <p className="text-xs text-slate-500">Students</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-green-500/20 rounded-lg">
+              <Chalkboard size={20} className="text-green-400" weight="duotone" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white tabular-nums">{dbStatus?.total_teachers || 0}</p>
+              <p className="text-xs text-slate-500">Teachers</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-yellow-500/20 rounded-lg">
+              <UserCircle size={20} className="text-yellow-400" weight="duotone" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white tabular-nums">{dbStatus?.total_staff || 0}</p>
+              <p className="text-xs text-slate-500">Staff</p>
             </div>
           </div>
         </Card>
@@ -349,29 +479,223 @@ function DatabaseSettings({ stats }) {
               <Clock size={20} className="text-amber-400" weight="duotone" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-white tabular-nums">{stats.pendingJobs}</p>
-              <p className="text-xs text-slate-500">Pending</p>
+              <p className="text-2xl font-bold text-white tabular-nums">{dbStatus?.total_history || stats.pendingJobs || 0}</p>
+              <p className="text-xs text-slate-500">History Records</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Actions */}
+      {/* Database Actions */}
       <Card className="p-6">
         <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4">Database Actions</h3>
         <div className="space-y-3">
-          <Button variant="outline" icon={Trash} className="w-full justify-start">
-            Clear All Data
-          </Button>
+          {CLEAR_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              onClick={() => handleStartClear(option.id)}
+              className={clsx(
+                'w-full flex items-center gap-4 p-4 rounded-lg border text-left transition-all',
+                option.danger === 'critical' 
+                  ? 'border-red-700 bg-red-950/30 hover:bg-red-950/50 hover:border-red-600' 
+                  : option.danger === 'high'
+                  ? 'border-orange-700/50 bg-orange-950/20 hover:bg-orange-950/40 hover:border-orange-600'
+                  : 'border-slate-700 bg-slate-900 hover:bg-slate-800 hover:border-slate-600'
+              )}
+            >
+              <div className={clsx(
+                'p-2 rounded-lg',
+                option.danger === 'critical' ? 'bg-red-500/20' :
+                option.danger === 'high' ? 'bg-orange-500/20' :
+                'bg-slate-800'
+              )}>
+                <Trash size={20} className={clsx(
+                  option.danger === 'critical' ? 'text-red-400' :
+                  option.danger === 'high' ? 'text-orange-400' :
+                  'text-slate-400'
+                )} weight="duotone" />
+              </div>
+              <div className="flex-1">
+                <p className={clsx(
+                  'text-sm font-medium',
+                  option.danger === 'critical' ? 'text-red-400' :
+                  option.danger === 'high' ? 'text-orange-300' :
+                  'text-slate-300'
+                )}>{option.label}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{option.description}</p>
+              </div>
+            </button>
+          ))}
         </div>
       </Card>
+
+      {/* Clear Confirmation Modal */}
+      {showClearModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 rounded-xl border border-slate-700 w-full max-w-md shadow-2xl">
+            {/* Modal Header */}
+            <div className={clsx(
+              'px-6 py-4 border-b rounded-t-xl',
+              selectedOption?.danger === 'critical' ? 'border-red-700 bg-red-950/50' :
+              selectedOption?.danger === 'high' ? 'border-orange-700 bg-orange-950/50' :
+              'border-slate-700'
+            )}>
+              <h3 className="text-lg font-bold text-white">
+                {clearStep === 1 ? '⚠️ Warning' : clearStep === 2 ? '🛑 Confirm Action' : '🔐 Final Confirmation'}
+              </h3>
+              <p className="text-sm text-slate-400 mt-1">
+                Step {clearStep} of 3
+              </p>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              {clearStep === 1 && (
+                <div className="space-y-4">
+                  <p className="text-slate-300">
+                    You are about to <span className="font-bold text-red-400">{selectedOption?.label.toLowerCase()}</span>.
+                  </p>
+                  <div className="p-4 bg-red-950/30 border border-red-700/50 rounded-lg">
+                    <p className="text-sm text-red-300">
+                      {selectedOption?.description}
+                    </p>
+                  </div>
+                  <p className="text-sm text-slate-400">
+                    This action <span className="font-bold text-white">cannot be undone</span>. 
+                    Please ensure you have backed up any important data.
+                  </p>
+                </div>
+              )}
+
+              {clearStep === 2 && (
+                <div className="space-y-4">
+                  <p className="text-slate-300">
+                    Are you absolutely sure you want to proceed? This will permanently delete:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-slate-400 space-y-1">
+                    {clearType === 'all' && (
+                      <>
+                        <li>All student records</li>
+                        <li>All teacher records</li>
+                        <li>All staff records</li>
+                        <li>All capture history</li>
+                        <li>All generated ID images</li>
+                      </>
+                    )}
+                    {clearType === 'students' && (
+                      <>
+                        <li>All student records</li>
+                        <li>Student capture history</li>
+                        <li>Student ID images</li>
+                      </>
+                    )}
+                    {clearType === 'teachers' && (
+                      <>
+                        <li>All teacher records</li>
+                        <li>Teacher capture history</li>
+                        <li>Teacher ID images</li>
+                      </>
+                    )}
+                    {clearType === 'staff' && (
+                      <>
+                        <li>All staff records</li>
+                        <li>Staff capture history</li>
+                        <li>Staff ID images</li>
+                      </>
+                    )}
+                    {clearType === 'history' && (
+                      <>
+                        <li>All capture history records</li>
+                        <li>All generated ID images</li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+              )}
+
+              {clearStep === 3 && (
+                <div className="space-y-4">
+                  <p className="text-slate-300">
+                    To confirm, type <span className="font-mono bg-slate-800 px-2 py-1 rounded text-red-400">{selectedOption?.confirmText}</span> below:
+                  </p>
+                  <input
+                    type="text"
+                    value={confirmText}
+                    onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
+                    placeholder={selectedOption?.confirmText}
+                    className={clsx(
+                      'w-full px-4 py-3 bg-slate-800 border rounded-lg text-center font-mono text-lg transition-colors',
+                      isConfirmValid 
+                        ? 'border-green-500 text-green-400' 
+                        : 'border-slate-600 text-slate-300 focus:border-red-500'
+                    )}
+                    autoFocus
+                  />
+                  {confirmText && !isConfirmValid && (
+                    <p className="text-xs text-red-400 text-center">
+                      Text does not match. Please type exactly: {selectedOption?.confirmText}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-slate-700 flex gap-3">
+              <button
+                onClick={handleCloseModal}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              
+              {clearStep < 3 ? (
+                <button
+                  onClick={handleNextStep}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                >
+                  I Understand, Continue
+                </button>
+              ) : (
+                <button
+                  onClick={handleClear}
+                  disabled={!isConfirmValid || isClearing}
+                  className={clsx(
+                    'flex-1 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2',
+                    isConfirmValid 
+                      ? 'bg-red-600 hover:bg-red-700 text-white' 
+                      : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                  )}
+                >
+                  {isClearing ? (
+                    <>
+                      <SpinnerIcon size={16} className="animate-spin" />
+                      Clearing...
+                    </>
+                  ) : (
+                    <>
+                      <Trash size={16} weight="bold" />
+                      Clear Data
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 // Storage Settings Section
 function StorageSettings({ stats, storagePercent }) {
+  const toast = useToast()
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [storageAnalysis, setStorageAnalysis] = useState(null)
+  const [isCleaning, setIsCleaning] = useState(false)
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false)
 
   const handleRefreshStorage = async () => {
     setIsRefreshing(true)
@@ -383,6 +707,54 @@ function StorageSettings({ stats, storagePercent }) {
     } finally {
       setIsRefreshing(false)
     }
+  }
+
+  const handleAnalyzeStorage = async () => {
+    setIsAnalyzing(true)
+    try {
+      const data = await api.get('/api/system/storage/analyze')
+      setStorageAnalysis(data)
+      
+      if (data.orphaned_files?.length > 0) {
+        toast.warning('Orphaned Files Found', `${data.orphaned_files.length} files not linked to any records`)
+      } else {
+        toast.success('Storage Clean', 'No orphaned files found')
+      }
+    } catch (err) {
+      console.error('Failed to analyze storage:', err)
+      toast.error('Analysis Failed', 'Could not analyze storage')
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  const handleCleanupOrphans = async () => {
+    if (!storageAnalysis?.orphaned_files?.length) return
+    
+    setIsCleaning(true)
+    try {
+      const result = await api.post('/api/system/storage/cleanup', {
+        files: storageAnalysis.orphaned_files.map(f => f.path),
+      })
+      
+      toast.success('Cleanup Complete', `Removed ${result.deleted_count} orphaned files`)
+      setStorageAnalysis(null)
+      setShowCleanupConfirm(false)
+      handleRefreshStorage()
+    } catch (err) {
+      console.error('Cleanup failed:', err)
+      toast.error('Cleanup Failed', 'Could not remove orphaned files')
+    } finally {
+      setIsCleaning(false)
+    }
+  }
+
+  const formatBytes = (bytes) => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
   return (
@@ -435,6 +807,122 @@ function StorageSettings({ stats, storagePercent }) {
         )}
       </Card>
 
+      {/* Storage Analyzer */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider">Storage Analyzer</h3>
+            <p className="text-xs text-slate-500 mt-1">Find and clean up orphaned files</p>
+          </div>
+          <button
+            onClick={handleAnalyzeStorage}
+            disabled={isAnalyzing}
+            className={clsx(
+              'px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2',
+              isAnalyzing
+                ? 'bg-slate-700 text-slate-400 cursor-wait'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            )}
+          >
+            {isAnalyzing ? (
+              <>
+                <SpinnerIcon size={16} className="animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <HardDrives size={16} weight="duotone" />
+                Analyze Storage
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Analysis Results */}
+        {storageAnalysis && (
+          <div className="space-y-4">
+            {/* Summary Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 bg-slate-800 rounded-lg text-center">
+                <p className="text-lg font-bold text-white">{storageAnalysis.total_files || 0}</p>
+                <p className="text-xs text-slate-500">Total Files</p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg text-center">
+                <p className="text-lg font-bold text-green-400">{storageAnalysis.linked_files || 0}</p>
+                <p className="text-xs text-slate-500">Linked</p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg text-center">
+                <p className={clsx(
+                  'text-lg font-bold',
+                  (storageAnalysis.orphaned_files?.length || 0) > 0 ? 'text-amber-400' : 'text-slate-400'
+                )}>{storageAnalysis.orphaned_files?.length || 0}</p>
+                <p className="text-xs text-slate-500">Orphaned</p>
+              </div>
+            </div>
+
+            {/* Orphaned Files List */}
+            {storageAnalysis.orphaned_files?.length > 0 && (
+              <div className="border border-amber-700/50 rounded-lg overflow-hidden">
+                <div className="bg-amber-950/30 px-4 py-3 border-b border-amber-700/50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-400">⚠️</span>
+                    <span className="text-sm font-medium text-amber-300">
+                      {storageAnalysis.orphaned_files.length} Orphaned Files
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      ({formatBytes(storageAnalysis.orphaned_total_size || 0)})
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setShowCleanupConfirm(true)}
+                    className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-700 text-white rounded transition-colors flex items-center gap-1.5"
+                  >
+                    <Trash size={12} weight="bold" />
+                    Clean Up
+                  </button>
+                </div>
+                
+                <div className="max-h-48 overflow-y-auto">
+                  {storageAnalysis.orphaned_files.slice(0, 10).map((file, index) => (
+                    <div key={index} className="px-4 py-2 border-b border-slate-800 last:border-0 flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-300 font-mono truncate">{file.name || file.path}</p>
+                        <p className="text-xs text-slate-500">{file.modified || 'Unknown date'}</p>
+                      </div>
+                      <span className="text-xs text-slate-400 tabular-nums">{formatBytes(file.size || 0)}</span>
+                    </div>
+                  ))}
+                  {storageAnalysis.orphaned_files.length > 10 && (
+                    <div className="px-4 py-2 text-center text-xs text-slate-500">
+                      ...and {storageAnalysis.orphaned_files.length - 10} more files
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* No Orphans Message */}
+            {storageAnalysis.orphaned_files?.length === 0 && (
+              <div className="p-4 bg-green-950/30 border border-green-700/50 rounded-lg flex items-center gap-3">
+                <CheckCircle size={24} className="text-green-400" weight="fill" />
+                <div>
+                  <p className="text-sm font-medium text-green-300">Storage is clean!</p>
+                  <p className="text-xs text-slate-500">No orphaned files found</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!storageAnalysis && !isAnalyzing && (
+          <div className="py-8 text-center">
+            <HardDrives size={48} className="mx-auto text-slate-700 mb-3" weight="thin" />
+            <p className="text-sm text-slate-500">Click "Analyze Storage" to scan for orphaned files</p>
+          </div>
+        )}
+      </Card>
+
       {/* Storage Breakdown */}
       <Card className="p-6">
         <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4">Storage Breakdown</h3>
@@ -445,9 +933,54 @@ function StorageSettings({ stats, storagePercent }) {
           <StorageItem label="Other" size={stats.storageUsed * 0.05} color="text-slate-400" />
         </div>
       </Card>
+
+      {/* Cleanup Confirmation Modal */}
+      {showCleanupConfirm && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 rounded-xl border border-slate-700 w-full max-w-sm shadow-2xl">
+            <div className="px-6 py-4 border-b border-red-700 bg-red-950/50 rounded-t-xl">
+              <h3 className="text-lg font-bold text-white">⚠️ Confirm Cleanup</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-slate-300 mb-4">
+                This will permanently delete <span className="font-bold text-red-400">{storageAnalysis?.orphaned_files?.length} orphaned files</span>.
+              </p>
+              <p className="text-sm text-slate-500">
+                These files are not linked to any student, teacher, or staff records.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-700 flex gap-3">
+              <button
+                onClick={() => setShowCleanupConfirm(false)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCleanupOrphans}
+                disabled={isCleaning}
+                className="flex-1 px-4 py-2.5 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {isCleaning ? (
+                  <>
+                    <SpinnerIcon size={16} className="animate-spin" />
+                    Cleaning...
+                  </>
+                ) : (
+                  <>
+                    <Trash size={16} weight="bold" />
+                    Delete Files
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
 
 function StorageItem({ label, size, color }) {
   return (

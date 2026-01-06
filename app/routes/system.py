@@ -1,19 +1,25 @@
 """
 System & Import Routes
 ======================
-System statistics and CSV import functionality.
+System statistics, unified activity, database management, and CSV import functionality.
 """
 
 import io
+import os
 import csv
 import logging
 import psutil
-from typing import Optional
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
+import shutil
+from pathlib import Path
+from typing import Optional, Literal
+from datetime import datetime
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, Query, Body
+from pydantic import BaseModel
 
 from app.core.security import verify_api_key
 from app.services.student_service import StudentService, get_student_service
 from app.db.database import DatabaseManager, get_db
+from app.database import get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +31,6 @@ logger = logging.getLogger(__name__)
 system_router = APIRouter(
     prefix="/api/system",
     tags=["system"],
-    dependencies=[Depends(verify_api_key)]
 )
 
 
@@ -82,13 +87,478 @@ async def get_system_stats(
 
 
 # =============================================================================
+# UNIFIED ACTIVITY ENDPOINT
+# =============================================================================
+
+@system_router.get(
+    "/activity/recent",
+    summary="Get recent activity across all entity types",
+    description="Returns unified recent ID generation activity for students, teachers, and staff."
+)
+async def get_recent_activity(
+    entity_type: Optional[Literal["all", "student", "teacher", "staff"]] = Query("all"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(10, ge=1, le=50)
+):
+    """Get recent activity across all entity types with pagination."""
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        offset = (page - 1) * per_page
+        
+        # Build query based on entity type
+        if entity_type == "all":
+            # Union query across all history tables
+            query = """
+                SELECT 
+                    id,
+                    student_id as entity_id,
+                    full_name,
+                    file_path,
+                    COALESCE(status, 'success') as status,
+                    timestamp,
+                    'student' as entity_type,
+                    NULL as department,
+                    NULL as position
+                FROM generation_history
+                WHERE student_id IS NOT NULL
+                
+                UNION ALL
+                
+                SELECT 
+                    id,
+                    teacher_id as entity_id,
+                    full_name,
+                    file_path,
+                    COALESCE(status, 'success') as status,
+                    timestamp,
+                    'teacher' as entity_type,
+                    department,
+                    position
+                FROM teacher_history
+                WHERE teacher_id IS NOT NULL
+                
+                UNION ALL
+                
+                SELECT 
+                    id,
+                    staff_id as entity_id,
+                    full_name,
+                    file_path,
+                    COALESCE(status, 'success') as status,
+                    timestamp,
+                    'staff' as entity_type,
+                    department,
+                    position
+                FROM staff_history
+                WHERE staff_id IS NOT NULL
+                
+                ORDER BY timestamp DESC
+                LIMIT %s OFFSET %s
+            """
+            cursor.execute(query, [per_page, offset])
+            items = cursor.fetchall()
+            
+            # Get total counts
+            cursor.execute("SELECT COUNT(*) as c FROM generation_history WHERE student_id IS NOT NULL")
+            student_count = cursor.fetchone()['c']
+            cursor.execute("SELECT COUNT(*) as c FROM teacher_history WHERE teacher_id IS NOT NULL")
+            teacher_count = cursor.fetchone()['c']
+            cursor.execute("SELECT COUNT(*) as c FROM staff_history WHERE staff_id IS NOT NULL")
+            staff_count = cursor.fetchone()['c']
+            total = student_count + teacher_count + staff_count
+            
+        elif entity_type == "student":
+            cursor.execute("""
+                SELECT 
+                    id,
+                    student_id as entity_id,
+                    full_name,
+                    file_path,
+                    COALESCE(status, 'success') as status,
+                    timestamp,
+                    'student' as entity_type,
+                    NULL as department,
+                    NULL as position
+                FROM generation_history
+                WHERE student_id IS NOT NULL
+                ORDER BY timestamp DESC
+                LIMIT %s OFFSET %s
+            """, [per_page, offset])
+            items = cursor.fetchall()
+            cursor.execute("SELECT COUNT(*) as c FROM generation_history WHERE student_id IS NOT NULL")
+            total = cursor.fetchone()['c']
+            student_count = total
+            teacher_count = 0
+            staff_count = 0
+            
+        elif entity_type == "teacher":
+            cursor.execute("""
+                SELECT 
+                    id,
+                    teacher_id as entity_id,
+                    full_name,
+                    file_path,
+                    COALESCE(status, 'success') as status,
+                    timestamp,
+                    'teacher' as entity_type,
+                    department,
+                    position
+                FROM teacher_history
+                WHERE teacher_id IS NOT NULL
+                ORDER BY timestamp DESC
+                LIMIT %s OFFSET %s
+            """, [per_page, offset])
+            items = cursor.fetchall()
+            cursor.execute("SELECT COUNT(*) as c FROM teacher_history WHERE teacher_id IS NOT NULL")
+            total = cursor.fetchone()['c']
+            student_count = 0
+            teacher_count = total
+            staff_count = 0
+            
+        else:  # staff
+            cursor.execute("""
+                SELECT 
+                    id,
+                    staff_id as entity_id,
+                    full_name,
+                    file_path,
+                    COALESCE(status, 'success') as status,
+                    timestamp,
+                    'staff' as entity_type,
+                    department,
+                    position
+                FROM staff_history
+                WHERE staff_id IS NOT NULL
+                ORDER BY timestamp DESC
+                LIMIT %s OFFSET %s
+            """, [per_page, offset])
+            items = cursor.fetchall()
+            cursor.execute("SELECT COUNT(*) as c FROM staff_history WHERE staff_id IS NOT NULL")
+            total = cursor.fetchone()['c']
+            student_count = 0
+            teacher_count = 0
+            staff_count = total
+        
+        import math
+        pages = math.ceil(total / per_page) if total > 0 else 1
+        
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "pages": pages,
+            "counts": {
+                "students": student_count,
+                "teachers": teacher_count,
+                "staff": staff_count,
+                "all": student_count + teacher_count + staff_count
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to get recent activity: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# =============================================================================
+# DATABASE MANAGEMENT ENDPOINTS
+# =============================================================================
+
+class ClearDataRequest(BaseModel):
+    entity_type: Literal["students", "teachers", "staff", "all"]
+    confirm_text: str
+    admin_password: Optional[str] = None
+
+
+@system_router.get(
+    "/database/status",
+    summary="Get database connection status"
+)
+async def get_database_status(db: DatabaseManager = Depends(get_db)):
+    """Test database connection and return status."""
+    try:
+        health = db.health_check()
+        conn = get_db_connection()
+        if conn:
+            cursor = conn.cursor(dictionary=True)
+            
+            # Get record counts
+            counts = {}
+            for table in ['students', 'teachers', 'staff', 'id_templates', 'generation_history']:
+                try:
+                    cursor.execute(f"SELECT COUNT(*) as count FROM {table}")
+                    counts[table] = cursor.fetchone()['count']
+                except:
+                    counts[table] = 0
+            
+            cursor.close()
+            conn.close()
+            
+            return {
+                "status": "connected",
+                "latency_ms": health.get("latency_ms", 0),
+                "pool_size": health.get("pool_size", 0),
+                "counts": counts
+            }
+        else:
+            return {"status": "disconnected", "error": "Could not establish connection"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@system_router.post(
+    "/database/clear",
+    summary="Clear data from database"
+)
+async def clear_database_data(request: ClearDataRequest):
+    """
+    Clear data from database with confirmation.
+    
+    Requires matching confirm_text:
+    - students: "DELETE STUDENTS"
+    - teachers: "DELETE TEACHERS"
+    - staff: "DELETE STAFF"
+    - all: "RESET SYSTEM" (also requires admin_password)
+    """
+    # Validate confirmation text
+    expected_confirms = {
+        "students": "DELETE STUDENTS",
+        "teachers": "DELETE TEACHERS",
+        "staff": "DELETE STAFF",
+        "all": "RESET SYSTEM"
+    }
+    
+    expected = expected_confirms.get(request.entity_type)
+    if request.confirm_text != expected:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid confirmation. Expected: '{expected}'"
+        )
+    
+    # For "all", require admin password
+    if request.entity_type == "all":
+        # Simple password check (in production, use proper auth)
+        if request.admin_password != "admin123":
+            raise HTTPException(status_code=403, detail="Invalid admin password")
+    
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    
+    try:
+        cursor = conn.cursor()
+        deleted_counts = {}
+        
+        if request.entity_type in ["students", "all"]:
+            cursor.execute("SELECT COUNT(*) FROM students")
+            deleted_counts["students"] = cursor.fetchone()[0]
+            cursor.execute("DELETE FROM generation_history")
+            cursor.execute("DELETE FROM students")
+            
+        if request.entity_type in ["teachers", "all"]:
+            cursor.execute("SELECT COUNT(*) FROM teachers")
+            deleted_counts["teachers"] = cursor.fetchone()[0]
+            cursor.execute("DELETE FROM teacher_history")
+            cursor.execute("DELETE FROM teachers")
+            
+        if request.entity_type in ["staff", "all"]:
+            cursor.execute("SELECT COUNT(*) FROM staff")
+            deleted_counts["staff"] = cursor.fetchone()[0]
+            cursor.execute("DELETE FROM staff_history")
+            cursor.execute("DELETE FROM staff")
+        
+        if request.entity_type == "all":
+            # Also clear templates if full reset
+            cursor.execute("SELECT COUNT(*) FROM id_templates")
+            deleted_counts["templates"] = cursor.fetchone()[0]
+            cursor.execute("DELETE FROM id_templates")
+        
+        conn.commit()
+        
+        return {
+            "success": True,
+            "deleted": deleted_counts,
+            "message": f"Successfully cleared {request.entity_type} data"
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# =============================================================================
+# STORAGE MANAGEMENT ENDPOINTS
+# =============================================================================
+
+@system_router.get(
+    "/storage/analyze",
+    summary="Analyze storage usage"
+)
+async def analyze_storage():
+    """Analyze storage usage across all data directories."""
+    base_path = Path("data")
+    
+    def get_dir_size(path: Path) -> int:
+        total = 0
+        if path.exists():
+            for item in path.rglob("*"):
+                if item.is_file():
+                    total += item.stat().st_size
+        return total
+    
+    def count_files(path: Path, extensions: list = None) -> int:
+        count = 0
+        if path.exists():
+            for item in path.rglob("*"):
+                if item.is_file():
+                    if extensions is None or item.suffix.lower() in extensions:
+                        count += 1
+        return count
+    
+    # Calculate sizes
+    output_size = get_dir_size(base_path / "output")
+    input_size = get_dir_size(base_path / "input")
+    templates_size = get_dir_size(base_path / "Templates")
+    print_sheets_size = get_dir_size(base_path / "Print_Sheets")
+    models_size = get_dir_size(base_path / "models")
+    database_size = get_dir_size(base_path / "database")
+    
+    total_size = output_size + input_size + templates_size + print_sheets_size + models_size + database_size
+    
+    # Count files
+    output_count = count_files(base_path / "output", [".png", ".jpg", ".jpeg"])
+    input_count = count_files(base_path / "input", [".png", ".jpg", ".jpeg", ".json"])
+    template_count = count_files(base_path / "Templates", [".png", ".jpg", ".jpeg"])
+    
+    # Find orphaned files (files in output not linked to any history)
+    orphaned_files = []
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor(dictionary=True)
+            
+            # Get all file paths from history
+            cursor.execute("SELECT file_path FROM generation_history WHERE file_path IS NOT NULL")
+            db_files = set(row['file_path'] for row in cursor.fetchall())
+            
+            cursor.execute("SELECT file_path FROM teacher_history WHERE file_path IS NOT NULL")
+            db_files.update(row['file_path'] for row in cursor.fetchall())
+            
+            cursor.execute("SELECT file_path FROM staff_history WHERE file_path IS NOT NULL")
+            db_files.update(row['file_path'] for row in cursor.fetchall())
+            
+            # Check output directory
+            output_path = base_path / "output"
+            if output_path.exists():
+                for f in output_path.glob("*.png"):
+                    if str(f) not in db_files and f.name not in [Path(p).name for p in db_files]:
+                        orphaned_files.append(str(f))
+            
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error finding orphaned files: {e}")
+        finally:
+            conn.close()
+    
+    orphaned_size = sum(Path(f).stat().st_size for f in orphaned_files if Path(f).exists())
+    
+    return {
+        "total_bytes": total_size,
+        "total_formatted": format_bytes(total_size),
+        "breakdown": {
+            "generated_ids": {
+                "bytes": output_size,
+                "formatted": format_bytes(output_size),
+                "count": output_count
+            },
+            "input_photos": {
+                "bytes": input_size,
+                "formatted": format_bytes(input_size),
+                "count": input_count
+            },
+            "templates": {
+                "bytes": templates_size,
+                "formatted": format_bytes(templates_size),
+                "count": template_count
+            },
+            "print_sheets": {
+                "bytes": print_sheets_size,
+                "formatted": format_bytes(print_sheets_size)
+            },
+            "ai_models": {
+                "bytes": models_size,
+                "formatted": format_bytes(models_size)
+            }
+        },
+        "orphaned": {
+            "bytes": orphaned_size,
+            "formatted": format_bytes(orphaned_size),
+            "count": len(orphaned_files),
+            "files": orphaned_files[:20]  # Limit to first 20
+        }
+    }
+
+
+def format_bytes(size: int) -> str:
+    """Format bytes to human readable string."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+        size /= 1024
+    return f"{size:.2f} TB"
+
+
+@system_router.post(
+    "/storage/cleanup",
+    summary="Clean up orphaned files"
+)
+async def cleanup_storage(confirm: bool = Query(False)):
+    """Delete orphaned files from storage."""
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Add ?confirm=true to actually delete files"
+        )
+    
+    # Get orphaned files
+    analysis = await analyze_storage()
+    orphaned = analysis.get("orphaned", {}).get("files", [])
+    
+    deleted = []
+    errors = []
+    
+    for file_path in orphaned:
+        try:
+            if Path(file_path).exists():
+                Path(file_path).unlink()
+                deleted.append(file_path)
+        except Exception as e:
+            errors.append({"file": file_path, "error": str(e)})
+    
+    return {
+        "success": True,
+        "deleted_count": len(deleted),
+        "deleted_files": deleted,
+        "errors": errors
+    }
+
+
+# =============================================================================
 # IMPORT ROUTER
 # =============================================================================
 
 import_router = APIRouter(
     prefix="/api/students/import",
-    tags=["import"],
-    dependencies=[Depends(verify_api_key)]
+    tags=["import"]
 )
 
 

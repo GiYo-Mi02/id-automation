@@ -1,4 +1,4 @@
-# Code Fixes Applied — Jan 5, 2026
+# Code Fixes Applied — Jan 5-6, 2026
 
 ## Summary
 
@@ -8,7 +8,65 @@ Addressed technical debt that was previously only documented. Bugs fixed, docume
 
 ## Code Fixes
 
-### 1. Database Schema Drift (FIXED)
+### 1. Database Query Routing Bug (FIXED) — **CRITICAL**
+**Date**: January 6, 2026  
+**Files**: `app/database.py`, `app/school_id_processor.py`
+
+**Problem**: Employee IDs (EMP-*, TCH-*, STF-*) were always queried against the `students` table, causing "UNKNOWN" to appear on all employee ID cards when JSON sidecar files were missing.
+
+**Root Cause**:
+```python
+# OLD CODE (BROKEN)
+student = database.get_student(student_id)  # Always queries students table!
+```
+
+When processing `EMP-2024-002.jpg`:
+- Query executed: `SELECT * FROM students WHERE id_number = 'EMP-2024-002'`
+- Result: NULL (employee not in students table)
+- Output: `{'name': 'UNKNOWN', 'lrn': '', 'grade_level': ''}`
+- Rendered ID card showed "UNKNOWN" with student fields
+
+**Fix**:
+1. Added `get_teacher()` function to `database.py`:
+   ```python
+   def get_teacher(employee_id):
+       """Query teachers table by employee_id."""
+       conn = get_db_connection()
+       cursor = conn.cursor(dictionary=True)
+       cursor.execute("SELECT * FROM teachers WHERE employee_id = %s", (employee_id,))
+       return cursor.fetchone()
+   ```
+
+2. Added ID prefix detection and routing in `school_id_processor.py`:
+   ```python
+   is_employee = (
+       student_id.upper().startswith('EMP-') or 
+       student_id.upper().startswith('TCH-') or 
+       student_id.upper().startswith('T-') or 
+       student_id.upper().startswith('STF-')
+   )
+   
+   if is_employee:
+       employee = database.get_teacher(student_id)
+       # Map employee fields: position, department, employee_id
+   else:
+       student = database.get_student(student_id)
+       # Map student fields: lrn, grade_level, section
+   ```
+
+**Impact**: 
+- ✅ Employee ID cards now display actual employee data
+- ✅ Correct table queried based on ID format
+- ✅ Database fallback works for both students and employees
+- ✅ Backward compatible with JSON sidecar files
+
+**Testing**: Verified via `test_db_routing.py` and `test_employee_e2e.py`
+
+**Documentation**: See [DATABASE_ROUTING_FIX.md](DATABASE_ROUTING_FIX.md) for complete analysis
+
+---
+
+### 2. Database Schema Drift (FIXED)
 **File**: `app/database.py`
 
 **Problem**: `init_db()` created `students` table without `grade_level` column, but API expected it.

@@ -18,16 +18,25 @@ export default function CapturePage() {
   const [cameras, setCameras] = useState([])
   const [selectedCamera, setSelectedCamera] = useState('')
   const [inputMode, setInputMode] = useState('database') // 'database' | 'manual'
+  const [entityType, setEntityType] = useState('student') // 'student' | 'teacher' | 'staff'
   const [selectedStudent, setSelectedStudent] = useState(null)
+  const [selectedTeacher, setSelectedTeacher] = useState(null)
+  const [selectedStaff, setSelectedStaff] = useState(null)
   const [manualData, setManualData] = useState({
     id_number: '',
+    employee_id: '',
     full_name: '',
     lrn_number: '',
     grade_level: '',
     section: '',
+    department: '',
+    position: '',
+    specialization: '',
     guardian_name: '',
     address: '',
     contact_number: '',
+    emergency_contact_name: '',
+    emergency_contact_number: '',
   })
   const [isCapturing, setIsCapturing] = useState(false)
   const [recentCaptures, setRecentCaptures] = useState([])
@@ -128,10 +137,49 @@ export default function CapturePage() {
   const handleCapture = useCallback(async (imageData) => {
     if (isCapturing) return
 
-    const studentData = inputMode === 'database' ? selectedStudent : manualData
+    // Get the selected entity data based on entity type
+    let entityData
+    if (inputMode === 'database') {
+      switch (entityType) {
+        case 'teacher':
+          entityData = selectedTeacher
+          break
+        case 'staff':
+          entityData = selectedStaff
+          break
+        default:
+          entityData = selectedStudent
+      }
+    } else {
+      entityData = manualData
+    }
     
-    if (!studentData || !studentData.id_number || !studentData.full_name) {
+    const entityId = entityData?.id_number || entityData?.employee_id || entityData?.student_id
+    
+    // Check if we're in teacher/staff mode (they can be identified by scanned ID only)
+    const isEmployeeMode = entityType === 'teacher' || entityType === 'staff'
+    
+    // For students: require full data selection
+    // For teachers/staff: allow capture with just an ID (from QR/OCR scan)
+    if (!isEmployeeMode && (!entityData || !entityId || !entityData.full_name)) {
       toast.warning('Missing Data', 'Please select or enter student information first')
+      return
+    }
+    
+    // For teachers/staff, if we have an entity ID, we can proceed (data will be fetched from DB)
+    if (isEmployeeMode && !entityId) {
+      const entityLabel = entityType === 'teacher' ? 'teacher' : 'staff'
+      toast.warning('Missing Data', `Please scan ${entityLabel} ID or enter ${entityLabel} information first`)
+      return
+    }
+
+    // Check for duplicate photo (prevent overwriting existing photos)
+    if (entityData && entityData.photo_path) {
+      const entityLabel = entityType === 'student' ? 'Student' : entityType === 'teacher' ? 'Teacher' : 'Staff member'
+      toast.error(
+        'Photo Already Exists', 
+        `${entityLabel} "${entityData.full_name}" already has a photo. Delete the old photo first or select a different person.`
+      )
       return
     }
 
@@ -145,16 +193,28 @@ export default function CapturePage() {
       // Create FormData for multipart upload
       const formData = new FormData()
       formData.append('file', blob, 'capture.jpg')
-      formData.append('student_id', studentData.id_number || studentData.student_id)
+      formData.append('entity_type', entityType)
+      formData.append('student_id', entityId)
       
       // Add manual data if in manual mode
       if (inputMode === 'manual') {
-        formData.append('manual_name', studentData.full_name || '')
-        formData.append('manual_grade', studentData.grade_level || '')
-        formData.append('manual_section', studentData.section || '')
-        formData.append('manual_guardian', studentData.guardian_name || '')
-        formData.append('manual_address', studentData.address || '')
-        formData.append('manual_contact', studentData.contact_number || studentData.guardian_contact || '')
+        formData.append('manual_name', entityData.full_name || '')
+        
+        if (entityType === 'student') {
+          formData.append('manual_grade', entityData.grade_level || '')
+          formData.append('manual_section', entityData.section || '')
+          formData.append('manual_guardian', entityData.guardian_name || '')
+          formData.append('manual_address', entityData.address || '')
+          formData.append('manual_contact', entityData.contact_number || entityData.guardian_contact || '')
+        } else {
+          formData.append('manual_department', entityData.department || '')
+          formData.append('manual_position', entityData.position || '')
+          formData.append('manual_specialization', entityData.specialization || '')
+          formData.append('manual_address', entityData.address || '')
+          formData.append('manual_contact', entityData.contact_number || '')
+          formData.append('manual_emergency_contact', entityData.emergency_contact_name || '')
+          formData.append('manual_emergency_number', entityData.emergency_contact_number || '')
+        }
       }
 
       const res = await api.post('/api/capture', formData)
@@ -201,8 +261,12 @@ export default function CapturePage() {
                 onCameraChange={setSelectedCamera}
                 inputMode={inputMode}
                 onInputModeChange={setInputMode}
+                entityType={entityType}
+                onEntityTypeChange={setEntityType}
                 selectedStudent={selectedStudent}
                 onStudentSelect={setSelectedStudent}
+                selectedTeacher={selectedTeacher}
+                selectedStaff={selectedStaff}
                 manualData={manualData}
                 onManualDataChange={setManualData}
                 onCapture={handleCapture}
@@ -216,12 +280,15 @@ export default function CapturePage() {
         <div className="w-[400px] shrink-0">
           <CaptureRightPanel
             inputMode={inputMode}
+            entityType={entityType}
             captures={recentCaptures}
             onRefresh={fetchRecentCaptures}
             onView={handleViewCapture}
             manualData={manualData}
             onManualDataChange={setManualData}
             onStudentSelect={setSelectedStudent}
+            onTeacherSelect={setSelectedTeacher}
+            onStaffSelect={setSelectedStaff}
           />
         </div>
       </div>

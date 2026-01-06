@@ -3,8 +3,8 @@
     "enableHairCleanup": true,
     "enableFaceRestoration": true,
     "enableBackgroundRemoval": true,
-    "active_template_front": "1.png",
-    "active_template_back": "2.png",
+    "active_template_front": "TAGSCI - FRONT.png",
+    "active_template_back": "TAGSCI - BACK.png",
     "smooth_strength": 5,
     "imageQuality": 100
 }

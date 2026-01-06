@@ -16,6 +16,7 @@ import { authenticatedFetch } from '../../services/api'
 
 export default function ImportDataSection({ onImportComplete }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [entityType, setEntityType] = useState('student')
   const [selectedFile, setSelectedFile] = useState(null)
   const [preview, setPreview] = useState(null)
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
@@ -44,7 +45,11 @@ export default function ImportDataSection({ onImportComplete }) {
       const formData = new FormData()
       formData.append('file', file)
 
-      const data = await authenticatedFetch('/api/students/import/preview', {
+      const endpoint = entityType === 'student' ? '/api/students/import/preview' :
+                       entityType === 'teacher' ? '/api/teachers/import/preview' :
+                       '/api/staff/import/preview'
+
+      const data = await authenticatedFetch(endpoint, {
         method: 'POST',
         body: formData,
       })
@@ -71,17 +76,24 @@ export default function ImportDataSection({ onImportComplete }) {
       const formData = new FormData()
       formData.append('file', selectedFile)
 
-      const data = await authenticatedFetch('/api/students/import', {
+      const endpoint = entityType === 'student' ? '/api/students/import' :
+                       entityType === 'teacher' ? '/api/teachers/import' :
+                       '/api/staff/import'
+
+      const data = await authenticatedFetch(endpoint, {
         method: 'POST',
         body: formData,
       })
 
       setImportResult(data)
+      
+      const entityLabel = entityType === 'student' ? 'students' : 
+                          entityType === 'teacher' ? 'teachers' : 'staff members'
         
       if (data.errors && data.errors.length > 0) {
         toast.warning('Import Complete with Errors', `${data.imported} imported, ${data.errors.length} errors`)
       } else {
-        toast.success('Import Complete', `Successfully imported ${data.imported} students`)
+        toast.success('Import Complete', `Successfully imported ${data.imported} ${entityLabel}`)
       }
         
       if (onImportComplete) onImportComplete()
@@ -102,6 +114,16 @@ export default function ImportDataSection({ onImportComplete }) {
     }
   }
 
+  const getRequiredColumns = () => {
+    if (entityType === 'student') {
+      return 'ID_Number, Full_Name, LRN, Section, Guardian_Name, Address, Guardian_Contact'
+    } else if (entityType === 'teacher') {
+      return 'employee_id, full_name, department, position, specialization, contact_number, address'
+    } else {
+      return 'id_number, employee_id, full_name, department, position, contact_number, address'
+    }
+  }
+
   return (
     <Card className="mb-5 overflow-hidden">
       <button
@@ -117,9 +139,52 @@ export default function ImportDataSection({ onImportComplete }) {
       {isOpen && (
         <div className="px-5 pb-5 border-t border-navy-800 pt-5 animate-slide-down">
           <div className="space-y-5">
+            {/* Entity Type Selector */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Import Type
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEntityType('student')}
+                  className={clsx(
+                    'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                    entityType === 'student'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-navy-800 text-slate-400 hover:bg-navy-700'
+                  )}
+                >
+                  Students
+                </button>
+                <button
+                  onClick={() => setEntityType('teacher')}
+                  className={clsx(
+                    'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                    entityType === 'teacher'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-navy-800 text-slate-400 hover:bg-navy-700'
+                  )}
+                >
+                  Teachers
+                </button>
+                <button
+                  onClick={() => setEntityType('staff')}
+                  className={clsx(
+                    'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                    entityType === 'staff'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-navy-800 text-slate-400 hover:bg-navy-700'
+                  )}
+                >
+                  Staff
+                </button>
+              </div>
+            </div>
+
             <p className="text-sm text-slate-400">
-              Import student or teacher data from CSV or Excel files. 
-              Required columns: ID_Number, Full_Name, LRN, Section, Guardian_Name, Address, Guardian_Contact
+              Import {entityType === 'student' ? 'student' : entityType === 'teacher' ? 'teacher' : 'staff'} data from CSV or Excel files. 
+              <br />
+              Required columns: {getRequiredColumns()}
             </p>
 
             {/* File Upload Area */}

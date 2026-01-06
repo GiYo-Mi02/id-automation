@@ -10,6 +10,14 @@ from rembg import remove, new_session
 from . import database  
 # ---------------------
 
+# Import new template renderer for layer-based rendering
+try:
+    from .template_renderer import TemplateRenderer, load_active_template
+    LAYER_RENDERER_AVAILABLE = True
+except ImportError:
+    LAYER_RENDERER_AVAILABLE = False
+    print("Layer-based template renderer not available. Using legacy rendering.")
+
 # 1. TRY LOADING GLAM ENGINE (MediaPipe)
 GLAM_AVAILABLE = False
 try:
@@ -90,35 +98,129 @@ class SchoolIDProcessor:
             try:
                 with open(json_path, 'r') as f:
                     data = json.load(f)
-                return {
-                    'id': str(data.get('id_number', student_id)),
-                    'name': str(data.get('full_name', 'UNKNOWN')).upper(),
+                
+                # Determine entity type from ID prefix or data
+                entity_type = 'student'
+                if student_id.startswith('EMP-') or student_id.startswith('TCH-'):
+                    entity_type = 'teacher'
+                elif student_id.startswith('STF-'):
+                    entity_type = 'staff'
+                
+                # Build comprehensive data dictionary with all possible fields
+                result = {
+                    'id': str(data.get('id_number', data.get('employee_id', student_id))),
+                    'type': entity_type,
+                    
+                    # Common fields
+                    'name': str(data.get('full_name', data.get('name', 'UNKNOWN'))).upper(),
+                    'full_name': str(data.get('full_name', data.get('name', 'UNKNOWN'))).upper(),
+                    'id_number': str(data.get('id_number', data.get('employee_id', student_id))),
+                    
+                    # Student-specific fields
                     'lrn': str(data.get('lrn', '')),
                     'grade_level': str(data.get('grade_level', '')).upper(),
                     'section': str(data.get('section', '')).upper(),
                     'guardian_name': str(data.get('guardian_name', '')).upper(),
+                    'guardian_contact': str(data.get('guardian_contact', '')),
+                    
+                    # Teacher/Staff-specific fields
+                    'position': str(data.get('position', data.get('job_title', ''))).upper(),
+                    'department': str(data.get('department', data.get('office', ''))).upper(),
+                    'employee_id': str(data.get('employee_id', data.get('id_number', student_id))),
+                    'employee_type': str(data.get('employee_type', '')),
+                    
+                    # Common additional fields
                     'address': str(data.get('address', '')),
-                    'guardian_contact': str(data.get('guardian_contact', ''))
+                    'emergency_contact': str(data.get('emergency_contact', data.get('guardian_contact', data.get('contact_number', '')))),
+                    'contact_number': str(data.get('contact_number', data.get('guardian_contact', ''))),
+                    'birth_date': str(data.get('birth_date', data.get('date_of_birth', ''))),
+                    'blood_type': str(data.get('blood_type', '')),
+                    'school_year': str(data.get('school_year', data.get('academic_year', '2025-2026'))),
                 }
-            except: pass
+                print(f"   Loaded from JSON - Type: {entity_type}, Name: {result['name']}, Position: {result.get('position', 'N/A')}")
+                return result
+            except Exception as e:
+                print(f"   JSON parse error: {e}")
+                pass
 
         # DB Fallback
-        student = database.get_student(student_id)
-        if not student: 
-            return {
-                'id': student_id, 'name': 'UNKNOWN', 
-                'lrn': '', 'grade_level': '', 'section': '', 
-                'guardian_name': '', 'address': '', 'guardian_contact': ''
+        # Detect entity type from ID prefix
+        is_employee = (
+            student_id.upper().startswith('EMP-') or 
+            student_id.upper().startswith('TCH-') or 
+            student_id.upper().startswith('T-') or 
+            student_id.upper().startswith('STF-')
+        )
+        
+        if is_employee:
+            # Query teachers table for employee data
+            employee = database.get_teacher(student_id)
+            
+            if not employee:
+                print(f"   ⚠️ Employee {student_id} not found in teachers table")
+                return {
+                    'id': student_id, 'name': 'UNKNOWN', 
+                    'full_name': 'UNKNOWN', 'id_number': student_id,
+                    'employee_id': student_id,
+                    'position': '', 'department': '',
+                    'address': '', 'contact_number': '',
+                    'emergency_contact': '', 'birth_date': '', 'blood_type': '',
+                    'school_year': '2025-2026', 'type': 'teacher'
+                }
+            
+            # Map employee database fields to expected format
+            result = {
+                'id': str(employee['employee_id']),
+                'name': str(employee['full_name']).upper(),
+                'full_name': str(employee['full_name']).upper(),
+                'id_number': str(employee['employee_id']),
+                'employee_id': str(employee['employee_id']),
+                
+                # Employee-specific fields
+                'position': str(employee.get('position', '') or '').upper(),
+                'department': str(employee.get('department', '') or '').upper(),
+                'specialization': str(employee.get('specialization', '') or ''),
+                'hire_date': str(employee.get('hire_date', '') or ''),
+                'employment_status': str(employee.get('employment_status', 'active') or ''),
+                
+                # Common fields
+                'address': str(employee.get('address', '') or ''),
+                'contact_number': str(employee.get('contact_number', '') or ''),
+                'emergency_contact': str(employee.get('emergency_contact_name', '') or ''),
+                'birth_date': str(employee.get('birth_date', '') or ''),
+                'blood_type': str(employee.get('blood_type', '') or ''),
+                'school_year': '2025-2026',
+                'type': 'teacher'
             }
-        return {
-            'id': str(student['id_number']),
-            'name': str(student['full_name']).upper(),
-            'lrn': str(student.get('lrn', '') or ''),
-            'grade_level': str(student.get('grade_level', '') or '').upper(),
-            'section': str(student.get('section', '') or '').upper(),
-            'guardian_name': str(student.get('guardian_name', '') or '').upper(),
+            print(f"   ✅ Loaded from DB - Type: teacher, Name: {result['name']}, Position: {result['position']}, Department: {result['department']}")
+            return result
+        else:
+            # Query students table for student data
+            student = database.get_student(student_id)
+            if not student: 
+                return {
+                    'id': student_id, 'name': 'UNKNOWN', 
+                    'full_name': 'UNKNOWN', 'id_number': student_id,
+                    'lrn': '', 'grade_level': '', 'section': '', 
+                    'guardian_name': '', 'address': '', 'guardian_contact': '',
+                    'emergency_contact': '', 'birth_date': '', 'blood_type': '',
+                    'school_year': '2025-2026',
+                }
+            return {
+                'id': str(student['id_number']),
+                'name': str(student['full_name']).upper(),
+                'full_name': str(student['full_name']).upper(),
+                'id_number': str(student['id_number']),
+                'lrn': str(student.get('lrn', '') or ''),
+                'grade_level': str(student.get('grade_level', '') or '').upper(),
+                'section': str(student.get('section', '') or '').upper(),
+                'guardian_name': str(student.get('guardian_name', '') or '').upper(),
             'address': str(student.get('address', '') or ''),
-            'guardian_contact': str(student.get('guardian_contact', '') or '')
+            'guardian_contact': str(student.get('guardian_contact', '') or ''),
+            'emergency_contact': str(student.get('emergency_contact', student.get('guardian_contact', '')) or ''),
+            'birth_date': str(student.get('birth_date', '') or ''),
+            'blood_type': str(student.get('blood_type', '') or ''),
+            'school_year': str(student.get('school_year', '2025-2026') or '2025-2026'),
         }
 
     def draw_text(self, draw, text, item_config, card_w):
@@ -202,6 +304,67 @@ class SchoolIDProcessor:
             # Get student data
             data = self.get_student_data(Path(filepath).name)
     
+            # Check if we should use layer-based rendering
+            if LAYER_RENDERER_AVAILABLE:
+                try:
+                    front_card, back_card = self._render_with_layers(data, img_final)
+                    if front_card and back_card:
+                        front_path = Path(self.config['OUTPUT_FOLDER']) / f"{data['id']}_FRONT.png"
+                        back_path = Path(self.config['OUTPUT_FOLDER']) / f"{data['id']}_BACK.png"
+                        front_card.filter(ImageFilter.SHARPEN).save(front_path)
+                        back_card.save(back_path)
+                        database.log_generation(data['id'], front_path)
+                        print(f"Saved (Layer): {front_path}")
+                        return True
+                    else:
+                        print("ERROR: Template rendering failed. No active template or rendering error.")
+                        return False
+                except Exception as e:
+                    print(f"Layer rendering error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return False
+            else:
+                print("ERROR: Layer renderer not available. Check imports.")
+                return False
+    
+        except Exception as e:
+            print(f"Error: {e}")
+            return False
+
+    def _render_with_layers(self, data, photo_image):
+        """Render ID card using the new layer-based template system from database"""
+        try:
+            # Load active template from database
+            template = load_active_template(data.get('type', 'student'))
+            if not template:
+                print("ERROR: No active template found in database. Please activate a template in the Editor.")
+                return None, None
+            
+            print(f"Using template: {template.get('templateName')} (ID: {template.get('id')})")
+            print(f"Data available for substitution: {list(data.keys())}")
+            print(f"   Name: {data.get('name', 'N/A')}")
+            print(f"   ID: {data.get('id_number', 'N/A')}")
+            print(f"   Position: {data.get('position', 'N/A')}")
+            print(f"   Department: {data.get('department', 'N/A')}")
+            
+            # Create renderer (TemplateRenderer doesn't need template_folder for DB templates)
+            renderer = TemplateRenderer()
+            
+            # Render both sides
+            front_card = renderer.render(template, data, photo_image, 'front')
+            back_card = renderer.render(template, data, photo_image, 'back')
+            
+            return front_card, back_card
+        except Exception as e:
+            print(f"Layer render error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None, None
+
+    def _render_legacy(self, data, img_final, layout):
+        """Original legacy rendering using layout.json"""
+        try:
             # --- FRONT CARD ---
             tpl_front = Path(self.config['TEMPLATE_FOLDER']) / self.settings.get('active_template_front', 'rizal_front.png')
             try:
@@ -220,7 +383,7 @@ class SchoolIDProcessor:
             for key in ['name', 'lrn', 'grade_level', 'section']:
                 if key in front_layout:
                     config = front_layout[key].copy()
-                    self.draw_text(draw, data[key], config, self.config['CARD_SIZE'][0])
+                    self.draw_text(draw, data.get(key, ''), config, self.config['CARD_SIZE'][0])
     
             front_path = Path(self.config['OUTPUT_FOLDER']) / f"{data['id']}_FRONT.png"
             card.filter(ImageFilter.SHARPEN).save(front_path)
@@ -236,7 +399,7 @@ class SchoolIDProcessor:
             draw_b = ImageDraw.Draw(back)
             for key in ['guardian_name', 'address', 'guardian_contact']:
                 if key in layout.get('back', {}):
-                    self.draw_text(draw_b, data[key], layout['back'][key], self.config['CARD_SIZE'][0])
+                    self.draw_text(draw_b, data.get(key, ''), layout['back'][key], self.config['CARD_SIZE'][0])
     
             back_path = Path(self.config['OUTPUT_FOLDER']) / f"{data['id']}_BACK.png"
             back.save(back_path)
@@ -244,7 +407,6 @@ class SchoolIDProcessor:
             database.log_generation(data['id'], front_path)
             print(f"Saved: {front_path}")
             return True
-    
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Legacy render error: {e}")
             return False

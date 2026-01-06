@@ -52,7 +52,8 @@ def init_db():
         section VARCHAR(50),
         guardian_name VARCHAR(100),
         address VARCHAR(255),
-        guardian_contact VARCHAR(50)
+        guardian_contact VARCHAR(50),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """)
     
@@ -78,11 +79,34 @@ def get_student(student_id):
     conn.close()
     return student
 
-def get_all_students():
+def get_teacher(employee_id):
+    """Query teachers table by employee_id."""
+    conn = get_db_connection()
+    if not conn: return None
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM teachers WHERE employee_id = %s", (employee_id,))
+    teacher = cursor.fetchone()
+    conn.close()
+    return teacher
+
+def get_all_students(order_by='created_at', order_dir='DESC', limit=None):
     conn = get_db_connection()
     if not conn: return []
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM students")
+    
+    # Build query with ordering
+    query = "SELECT * FROM students"
+    
+    # Validate order_by column to prevent SQL injection
+    valid_columns = ['id_number', 'full_name', 'created_at', 'grade_level', 'section']
+    if order_by in valid_columns:
+        order_direction = 'DESC' if order_dir.upper() == 'DESC' else 'ASC'
+        query += f" ORDER BY {order_by} {order_direction}"
+    
+    if limit:
+        query += f" LIMIT {int(limit)}"
+    
+    cursor.execute(query)
     students = cursor.fetchall()
     conn.close()
     return students

@@ -17,6 +17,11 @@ from watchdog.events import FileSystemEventHandler
 from . import database
 from .school_id_processor import SchoolIDProcessor, CONFIG
 
+# Import new routes
+from .routes.templates import router as templates_router
+from .routes.teachers import router as teachers_router
+from .routes.staff import router as staff_router
+
 # ==================== WEBSOCKET MANAGER ====================
 class ConnectionManager:
     def __init__(self): self.active_connections: list[WebSocket] = []
@@ -107,6 +112,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+# Include new routers
+app.include_router(templates_router)
+app.include_router(teachers_router)
+app.include_router(staff_router)
 
 # ==================== ROUTES ====================
 
@@ -203,7 +213,29 @@ async def delete_template(filename: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/students")
-def get_students(): return database.get_all_students()
+def get_students(
+    page: int = 1,
+    page_size: int = 50,
+    sort_by: str = 'created_at',
+    sort_order: str = 'DESC'
+):
+    """Get students with pagination and sorting"""
+    # Calculate offset
+    offset = (page - 1) * page_size
+    
+    # Get all students with ordering (we'll implement proper pagination in database later)
+    all_students = database.get_all_students(order_by=sort_by, order_dir=sort_order)
+    
+    # Apply pagination in memory
+    total = len(all_students)
+    students = all_students[offset:offset + page_size]
+    
+    return {
+        'students': students,
+        'total': total,
+        'page': page,
+        'page_size': page_size
+    }
 
 @app.get("/api/students/search")
 def search_students(q: str = ""):
@@ -535,6 +567,52 @@ async def preview_import(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Preview failed: {str(e)}")
 
+@app.post("/api/upload/image")
+async def upload_image(file: UploadFile = File(...)):
+    """
+    Upload an image file to be used in templates.
+    Returns the URL path and image dimensions.
+    """
+    try:
+        # Create uploads directory if it doesn't exist
+        uploads_dir = Path("data/uploads")
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Generate unique filename to prevent conflicts
+        timestamp = int(time.time() * 1000)
+        ext = Path(file.filename).suffix
+        filename = f"{Path(file.filename).stem}_{timestamp}{ext}"
+        save_path = uploads_dir / filename
+        
+        # Save the file
+        with open(save_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Get image dimensions
+        from PIL import Image
+        with Image.open(save_path) as img:
+            width, height = img.size
+        
+        # Return URL path and dimensions
+        url = f"/uploads/{filename}"
+        
+        return {
+            "status": "success",
+            "url": url,
+            "filename": filename,
+            "width": width,
+            "height": height
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
@@ -544,3 +622,5 @@ async def websocket_endpoint(websocket: WebSocket):
 
 app.mount("/output", StaticFiles(directory=CONFIG['OUTPUT_FOLDER']), name="output")
 app.mount("/templates", StaticFiles(directory=CONFIG['TEMPLATE_FOLDER']), name="templates")
+app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
+app.mount("/static/uploads", StaticFiles(directory="data/uploads"), name="static_uploads")

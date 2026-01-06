@@ -30,6 +30,9 @@ from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.database import DatabaseManager
 from app.routes.students import router as students_router, history_router, stats_router
+from app.routes.teachers import router as teachers_router
+from app.routes.staff import router as staff_router
+from app.routes.templates import router as templates_router
 from app.routes.system import system_router, import_router
 from app.school_id_processor import SchoolIDProcessor, CONFIG
 
@@ -241,6 +244,9 @@ def create_app() -> FastAPI:
     app.include_router(students_router)
     app.include_router(history_router)
     app.include_router(stats_router)
+    app.include_router(teachers_router)
+    app.include_router(staff_router)
+    app.include_router(templates_router)
     app.include_router(system_router)
     app.include_router(import_router)
     
@@ -274,6 +280,24 @@ def _mount_static_files(app: FastAPI, settings):
     template_path = Path(settings.paths.template_dir)
     if template_path.exists():
         app.mount("/templates", StaticFiles(directory=str(template_path)), name="templates")
+    
+    # Uploads directory (for user-uploaded images in editor)
+    uploads_path = Path("data/uploads")
+    uploads_path.mkdir(parents=True, exist_ok=True)
+    if uploads_path.exists():
+        app.mount("/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
+        app.mount("/static/uploads", StaticFiles(directory=str(uploads_path)), name="static_uploads")
+    
+    # Background images - MUST be mounted before /data to match specific path
+    backgrounds_path = Path("data/templates")
+    backgrounds_path.mkdir(parents=True, exist_ok=True)
+    if backgrounds_path.exists():
+        app.mount("/api/templates/backgrounds", StaticFiles(directory=str(backgrounds_path)), name="backgrounds")
+    
+    # Data directory (for uploaded backgrounds, etc.)
+    data_path = Path("data")
+    if data_path.exists():
+        app.mount("/data", StaticFiles(directory=str(data_path)), name="data")
     
     # Print sheets folder
     print_path = Path(settings.paths.print_sheets_dir)
@@ -381,6 +405,57 @@ def _register_legacy_routes(app: FastAPI):
             raise HTTPException(status_code=404, detail="Template not found")
         template_path.unlink()
         return {"status": "deleted", "filename": filename}
+    
+    # Image upload endpoint (for editor)
+    @app.post("/api/upload/image")
+    async def upload_image(file: UploadFile = File(...)):
+        """
+        Upload an image file to be used in templates.
+        Returns the URL path and image dimensions.
+        """
+        try:
+            # Create uploads directory if it doesn't exist
+            uploads_dir = Path("data/uploads")
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Validate file type
+            if not file.content_type or not file.content_type.startswith('image/'):
+                raise HTTPException(status_code=400, detail="File must be an image")
+            
+            # Generate unique filename to prevent conflicts
+            import time
+            timestamp = int(time.time() * 1000)
+            ext = Path(file.filename).suffix
+            filename = f"{Path(file.filename).stem}_{timestamp}{ext}"
+            save_path = uploads_dir / filename
+            
+            # Save the file
+            with open(save_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            # Get image dimensions
+            from PIL import Image
+            with Image.open(save_path) as img:
+                width, height = img.size
+            
+            # Return URL path and dimensions
+            url = f"/uploads/{filename}"
+            
+            logger.info(f"✅ Image uploaded: {filename} ({width}x{height})")
+            
+            return {
+                "status": "success",
+                "url": url,
+                "filename": filename,
+                "width": width,
+                "height": height
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Upload failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
     
     # Regenerate endpoint
     @app.post("/api/regenerate/{student_id}")

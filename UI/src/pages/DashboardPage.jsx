@@ -30,17 +30,30 @@ export default function DashboardPage() {
   // Define fetch functions with useCallback (must be before useEffect that uses them)
   const fetchTemplates = useCallback(async () => {
     try {
-      const data = await api.get('/api/templates')
-      setTemplates(data)
-      // Set active templates if available
-      if (data.front?.length > 0) {
-        setActiveTemplate(prev => ({ ...prev, front: data.front[0] }))
-      }
-      if (data.back?.length > 0) {
-        setActiveTemplate(prev => ({ ...prev, back: data.back[0] }))
+      // Fetch from database instead of legacy endpoint
+      const response = await api.get('/api/templates/db')
+      
+      // Group templates by side (front/back) - for now, treat all as front
+      // Future: Add side field to database schema
+      const dbTemplates = response.templates || []
+      
+      setTemplates({
+        front: dbTemplates.filter(t => !t.template_name?.toLowerCase().includes('back')),
+        back: dbTemplates.filter(t => t.template_name?.toLowerCase().includes('back'))
+      })
+      
+      // Set active template from database
+      const activeTemplate = dbTemplates.find(t => t.is_active)
+      if (activeTemplate) {
+        setActiveTemplate(prev => ({ 
+          ...prev, 
+          front: activeTemplate 
+        }))
       }
     } catch (err) {
-      console.error('Failed to fetch templates:', err)
+      console.error('Failed to fetch templates:', err.message || JSON.stringify(err))
+      // Fallback to empty state
+      setTemplates({ front: [], back: [] })
     }
   }, [])
 
@@ -180,6 +193,7 @@ export default function DashboardPage() {
               templates={templates}
               activeTemplate={activeTemplate}
               onTemplateSelect={handleTemplateSelect}
+              onTemplatesRefresh={fetchTemplates}
               onRegenerate={() => latestOutput && handleRegenerate(latestOutput)}
               onView={() => latestOutput && handleViewStudent(latestOutput)}
             />
