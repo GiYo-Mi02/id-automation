@@ -10,7 +10,7 @@ import logging
 import textwrap
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageChops
 import qrcode
 
 logger = logging.getLogger(__name__)
@@ -354,9 +354,14 @@ def apply_rounded_corners(img: Image.Image, radius: int) -> Image.Image:
     draw = ImageDraw.Draw(mask)
     draw.rounded_rectangle([(0, 0), img.size], radius=radius, fill=255)
     
+    # If the original image is RGBA, combine its alpha channel with the mask
+    if img.mode == 'RGBA':
+        orig_alpha = img.split()[3]
+        mask = ImageChops.multiply(orig_alpha, mask)
+        
     # Apply mask
     result = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    result.paste(img, (0, 0))
+    result.paste(img, (0, 0), mask=img)
     result.putalpha(mask)
     
     return result
@@ -657,18 +662,17 @@ def load_active_template(template_type: str = 'student') -> Optional[Dict[str, A
     """Load the active template for a given type."""
     from app.db.database import db_manager
     
-    # Simple query: Find ANY active template
-    # We don't filter by template_type because only ONE template should be active at a time
+    # Find active template for the specific type
     query = """
         SELECT id, name, template_type, school_level, is_active,
                canvas, front_layers, back_layers,
                created_at, updated_at
         FROM id_templates
-        WHERE is_active = 1
+        WHERE is_active = 1 AND template_type = %s
         LIMIT 1
     """
     
-    row = db_manager.execute_query(query, None, fetch_one=True)
+    row = db_manager.execute_query(query, (template_type,), fetch_one=True)
     
     if not row:
         logger.error("CRITICAL: No active template found in database. Please activate a template in the Editor.")

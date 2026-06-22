@@ -89,6 +89,15 @@ export default function CaptureRightPanel({
     }
   }, [activeTab, inputMode, fetchStudents, fetchTeachers, fetchStaff])
 
+  // Sync active tab with entityType when entityType changes
+  useEffect(() => {
+    if (inputMode === 'database' && entityType) {
+      if (entityType === 'student') setActiveTab('students')
+      else if (entityType === 'teacher') setActiveTab('teachers')
+      else if (entityType === 'staff') setActiveTab('staff')
+    }
+  }, [entityType, inputMode])
+
   // Reset page and search when tab changes
   useEffect(() => {
     setCurrentPage(1)

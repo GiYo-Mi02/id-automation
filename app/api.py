@@ -327,20 +327,36 @@ async def regenerate_id(student_id: str):
 def get_history(limit: int = 50): 
     history = database.get_recent_history(limit=limit)
     enhanced_history = []
+    
     for h in history:
-        sid = h['student_id']
-        # Frontend expects both field name variations
-        front_path = f"/output/{sid}_FRONT.png"
-        back_path = f"/output/{sid}_BACK.png"
+        # Get ID from the appropriate field
+        entity_id = h.get('id_number') or h.get('student_id')
+        user_type = h.get('user_type', 'student')
+        
+        # Construct file paths based on entity ID
+        front_path = f"/output/{entity_id}_FRONT.png" if entity_id else ""
+        back_path = f"/output/{entity_id}_BACK.png" if entity_id else ""
+        
         enhanced_history.append({
-            **h,
-            "id_number": h.get('student_id'),  # Add id_number alias
-            "created_at": h.get('timestamp'),  # Add created_at alias
-            "front_url": front_path,
-            "back_url": back_path,
-            "front_image": front_path,  # Frontend uses this
-            "back_image": back_path    # Frontend uses this
+            'student_id': entity_id,  # Keep for backward compatibility
+            'id_number': entity_id,
+            'full_name': h.get('full_name', 'Unknown'),
+            'user_type': user_type,
+            'section': h.get('section', ''),
+            'lrn': h.get('lrn', ''),
+            'guardian_name': h.get('guardian_name', ''),
+            'address': h.get('address', ''),
+            'guardian_contact': h.get('guardian_contact', ''),
+            'department': h.get('teacher_department') or h.get('staff_department', ''),
+            'position': h.get('teacher_position') or h.get('staff_position', ''),
+            'timestamp': h.get('timestamp'),
+            'created_at': h.get('timestamp'),
+            'front_url': front_path,
+            'back_url': back_path,
+            'front_image': front_path,
+            'back_image': back_path
         })
+    
     return enhanced_history
 
 @app.get("/api/system/stats")
@@ -373,32 +389,57 @@ def get_system_stats():
 async def upload_capture(
     file: UploadFile = File(...), 
     student_id: str = Form(...),
-    # Manual Fields
+    entity_type: str = Form('student'),  # NEW: Accept entity type from frontend
+    # Manual Fields (Student)
     manual_name: str = Form(None),
     manual_grade: str = Form(None),
     manual_section: str = Form(None),
-    manual_guardian: str = Form(None), # NEW
-    manual_address: str = Form(None),  # NEW
-    manual_contact: str = Form(None)   # NEW
+    manual_guardian: str = Form(None),
+    manual_address: str = Form(None),
+    manual_contact: str = Form(None),
+    # Manual Fields (Teacher/Staff)
+    manual_department: str = Form(None),
+    manual_position: str = Form(None),
+    manual_specialization: str = Form(None),
+    manual_emergency_contact: str = Form(None),
+    manual_emergency_number: str = Form(None)
 ):
     try:
         # 1. If manual data exists, save it to a JSON sidecar file
         if manual_name:
             json_path = Path(CONFIG['INPUT_FOLDER']) / f"{student_id}.json"
-            manual_data = {
-                "id_number": student_id,
-                "full_name": manual_name,
-                "grade_level": manual_grade or "",
-                "section": manual_section or "",
-                # Capture the new Back of ID fields
-                "guardian_name": manual_guardian or "", 
-                "address": manual_address or "", 
-                "guardian_contact": manual_contact or "",
-                "lrn": "" # Default empty
-            }
+            
+            # Build data based on entity type
+            if entity_type in ['teacher', 'staff']:
+                # Teacher/Staff data structure
+                manual_data = {
+                    "employee_id": student_id,
+                    "id_number": student_id,
+                    "full_name": manual_name,
+                    "department": manual_department or "",
+                    "position": manual_position or "",
+                    "specialization": manual_specialization or "",
+                    "address": manual_address or "",
+                    "contact_number": manual_contact or "",
+                    "emergency_contact": manual_emergency_contact or "",
+                    "emergency_contact_number": manual_emergency_number or ""
+                }
+            else:
+                # Student data structure
+                manual_data = {
+                    "id_number": student_id,
+                    "full_name": manual_name,
+                    "grade_level": manual_grade or "",
+                    "section": manual_section or "",
+                    "guardian_name": manual_guardian or "", 
+                    "address": manual_address or "", 
+                    "guardian_contact": manual_contact or "",
+                    "lrn": ""
+                }
+            
             with open(json_path, 'w') as f:
                 json.dump(manual_data, f)
-            print(f"Manual data saved for {student_id}")
+            print(f"Manual data saved for {student_id} (Type: {entity_type})")
 
         # 2. Save the image (Triggers Watchdog)
         filename = f"{student_id}.jpg"

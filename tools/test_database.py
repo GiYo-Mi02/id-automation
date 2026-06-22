@@ -38,7 +38,7 @@ with db.get_connection() as conn:
         for student in students:
             print(f"  {student}")
     else:
-        print("\n  ⚠️ NO STUDENTS FOUND IN DATABASE")
+        print("\n  [WARN] NO STUDENTS FOUND IN DATABASE")
         print("  You need to import student data or add students manually.")
     
     cursor.close()

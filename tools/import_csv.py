@@ -5,9 +5,9 @@ import os
 CSV_PATH = r"C:\School_IDs\students.csv"
 
 def sync_csv_to_db():
-    print(f"📂 Reading from: {CSV_PATH}")
+    print(f"[INFO] Reading from: {CSV_PATH}")
     if not os.path.exists(CSV_PATH):
-        print("❌ Error: students.csv file not found!")
+        print("[ERROR] Error: students.csv file not found!")
         return
 
     conn = database.get_db_connection()
@@ -19,7 +19,7 @@ def sync_csv_to_db():
             reader = csv.DictReader(f)
             count = 0
             
-            print("🔄 Syncing data...")
+            print("[INFO] Syncing data...")
             for row in reader:
                 sql = """
                     INSERT INTO students 
@@ -43,10 +43,10 @@ def sync_csv_to_db():
                 count += 1
 
         conn.commit()
-        print(f"✅ SUCCESS: Processed {count} students.")
+        print(f"[SUCCESS] Processed {count} students.")
 
     except Exception as e:
-        print(f"❌ Error during import: {e}")
+        print(f"[ERROR] Error during import: {e}")
     finally:
         conn.close()
 

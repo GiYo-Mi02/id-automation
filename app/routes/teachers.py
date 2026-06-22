@@ -27,7 +27,7 @@ def list_teachers(
     per_page: int = Query(50, ge=1, le=200),
     department: Optional[str] = None,
     status: Optional[str] = None,
-    sort_by: str = "full_name",
+    sort_by: str = "employee_id",
     sort_order: str = "asc",
 ):
     """List all teachers with pagination and filtering."""

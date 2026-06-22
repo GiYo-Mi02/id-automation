@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useToast } from '../contexts/ToastContext'
 import LayerBasedCanvas from '../components/editor/LayerBasedCanvas'
 import EnhancedLayersPanel from '../components/editor/EnhancedLayersPanel'
@@ -203,6 +203,7 @@ const createDefaultTemplate = (type = 'student') => ({
 
 export default function EditorPage() {
   const toast = useToast()
+  const preventAutoLoadRef = useRef(false)
   
   // Template state
   const [currentSide, setCurrentSide] = useState('front')
@@ -235,10 +236,16 @@ export default function EditorPage() {
       const response = await templateAPI.list({ templateType: templateType })
       if (response.templates && response.templates.length > 0) {
         setTemplateList(response.templates)
-        // Load active template or first available
-        const active = response.templates.find(t => t.is_active) || response.templates[0]
-        if (active) {
-          await loadTemplate(active.id)
+        
+        // If preventAutoLoadRef is active, reset it and do not overwrite currently loaded template
+        if (preventAutoLoadRef.current) {
+          preventAutoLoadRef.current = false
+        } else {
+          // Load active template or first available
+          const active = response.templates.find(t => t.is_active) || response.templates[0]
+          if (active) {
+            await loadTemplate(active.id, false) // pass false to avoid updating templateType state recursively
+          }
         }
       } else {
         // Fall back to legacy layout.json
@@ -253,7 +260,7 @@ export default function EditorPage() {
     }
   }
 
-  const loadTemplate = async (templateId) => {
+  const loadTemplate = async (templateId, updateTypeState = true) => {
     try {
       const data = await templateAPI.get(templateId)
       if (data) {
@@ -278,6 +285,12 @@ export default function EditorPage() {
             layers: data.back?.layers || [] 
           },
         })
+        
+        if (updateTypeState && data.templateType) {
+          preventAutoLoadRef.current = true
+          setTemplateType(data.templateType)
+        }
+        
         console.log('Set template state - Front layers:', data.front?.layers?.length, 'Back layers:', data.back?.layers?.length)
         setHasUnsavedChanges(false)
         pushToHistory({

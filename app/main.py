@@ -13,13 +13,15 @@ Fixes Applied:
 
 import asyncio
 import time
+import json
+import shutil
 import urllib.parse
 import logging
 from pathlib import Path
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -124,17 +126,28 @@ class IDGenerationHandler(FileSystemEventHandler):
         front_file = f"{student_id}_FRONT.png"
         back_file = f"{student_id}_BACK.png"
         
-        # Get student data from database
-        student_data = legacy_database.get_student(student_id)
+        # Get student/teacher/staff data from processor helper
+        student_data = None
+        try:
+            student_data = self.processor.get_student_data(Path(filepath).name)
+        except Exception as e:
+            logger.error(f"Error loading student data for broadcast: {e}")
+            
+        if not student_data:
+            student_data = legacy_database.get_student(student_id)
+            
+        full_name = student_data.get('full_name', '') if student_data else ''
+        section = student_data.get('section', '') if student_data else ''
+        lrn = student_data.get('lrn', '') if student_data else ''
         
         msg = {
             "type": "id_generated",
             "data": {
                 "student_id": student_id,
                 "id_number": student_id,
-                "full_name": student_data.get('full_name', '') if student_data else '',
-                "section": student_data.get('section', '') if student_data else '',
-                "lrn": student_data.get('lrn', '') if student_data else '',
+                "full_name": full_name,
+                "section": section,
+                "lrn": lrn,
                 "front_url": f"/output/{urllib.parse.quote(front_file)}",
                 "back_url": f"/output/{urllib.parse.quote(back_file)}",
                 "front_image": f"/output/{urllib.parse.quote(front_file)}",
@@ -192,6 +205,7 @@ async def lifespan(app: FastAPI):
     # Store on app state
     app.state.processor = processor
     app.state.observer = observer
+    app.state.event_handler = event_handler
     app.state.db_manager = db_manager
     app.state.settings = settings
     
@@ -204,6 +218,28 @@ async def lifespan(app: FastAPI):
     app.state.observer.stop()
     app.state.observer.join()
     logger.info("Shutdown complete")
+
+
+def process_capture_task(processor, filepath: str, event_handler):
+    """
+    Directly processes the captured photo and broadcasts the result.
+    """
+    # Prevent duplicate processing by watchdog if it happens to trigger
+    event_handler.processing.add(filepath)
+    try:
+        logger.info(f"Direct processing started for: {Path(filepath).name}")
+        success = processor.process_photo(filepath)
+        if success:
+            event_handler._broadcast_success(filepath)
+            logger.info(f"Direct processing success: {Path(filepath).name}")
+        else:
+            logger.error(f"Direct processing failed for: {Path(filepath).name}")
+    except Exception as e:
+        logger.error(f"Error in direct processing task: {e}", exc_info=True)
+    finally:
+        # Small delay before removing to let filesystem settle
+        time.sleep(1.0)
+        event_handler.processing.discard(filepath)
 
 
 # =============================================================================
@@ -250,11 +286,11 @@ def create_app() -> FastAPI:
     app.include_router(system_router)
     app.include_router(import_router)
     
-    # Mount static files
-    _mount_static_files(app, settings)
-    
     # Register legacy routes (temporary, for backward compatibility)
     _register_legacy_routes(app)
+
+    # Mount static files
+    _mount_static_files(app, settings)
     
     # Exception handlers
     @app.exception_handler(Exception)
@@ -473,42 +509,198 @@ def _register_legacy_routes(app: FastAPI):
     # Capture endpoint
     @app.post("/api/capture")
     async def upload_capture(
+        background_tasks: BackgroundTasks,
         file: UploadFile = File(...), 
         student_id: str = Form(...),
+        entity_type: str = Form("student"),
         # Manual Fields
         manual_name: str = Form(None),
         manual_grade: str = Form(None),
         manual_section: str = Form(None),
         manual_guardian: str = Form(None),
         manual_address: str = Form(None),
-        manual_contact: str = Form(None)
+        manual_contact: str = Form(None),
+        # Manual Fields (Teacher/Staff)
+        manual_department: str = Form(None),
+        manual_position: str = Form(None),
+        manual_specialization: str = Form(None),
+        manual_emergency_contact: str = Form(None),
+        manual_emergency_number: str = Form(None)
     ):
         """Handle photo capture and trigger ID generation."""
         try:
-            # 1. If manual data exists, save it to a JSON sidecar file
+            # 1. If manual data exists, save it to a JSON sidecar file and upsert to database
             if manual_name:
                 json_path = Path(settings.paths.input_dir) / f"{student_id}.json"
-                manual_data = {
-                    "id_number": student_id,
-                    "full_name": manual_name,
-                    "grade_level": manual_grade or "",
-                    "section": manual_section or "",
-                    "guardian_name": manual_guardian or "", 
-                    "address": manual_address or "", 
-                    "guardian_contact": manual_contact or "",
-                    "lrn": ""
-                }
+                
+                # Build data and database upsert query based on entity type
+                if entity_type in ['teacher', 'staff']:
+                    manual_data = {
+                        "employee_id": student_id,
+                        "id_number": student_id,
+                        "full_name": manual_name,
+                        "department": manual_department or "",
+                        "position": manual_position or "",
+                        "specialization": manual_specialization or "",
+                        "address": manual_address or "",
+                        "contact_number": manual_contact or "",
+                        "emergency_contact": manual_emergency_contact or "",
+                        "emergency_contact_number": manual_emergency_number or "",
+                        "type": entity_type
+                    }
+                    
+                    if entity_type == 'teacher':
+                        # Upsert to teachers table
+                        conn = legacy_database.get_db_connection()
+                        if conn:
+                            try:
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    INSERT INTO teachers (
+                                        employee_id, full_name, department, position, specialization, 
+                                        contact_number, emergency_contact_name, emergency_contact_number, 
+                                        address, employment_status
+                                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    ON DUPLICATE KEY UPDATE
+                                        full_name = VALUES(full_name),
+                                        department = VALUES(department),
+                                        position = VALUES(position),
+                                        specialization = VALUES(specialization),
+                                        contact_number = VALUES(contact_number),
+                                        emergency_contact_name = VALUES(emergency_contact_name),
+                                        emergency_contact_number = VALUES(emergency_contact_number),
+                                        address = VALUES(address)
+                                """, (
+                                    student_id,
+                                    manual_name,
+                                    manual_department or "",
+                                    manual_position or "",
+                                    manual_specialization or "",
+                                    manual_contact or "",
+                                    manual_emergency_contact or "",
+                                    manual_emergency_number or "",
+                                    manual_address or "",
+                                    "active"
+                                ))
+                                conn.commit()
+                                logger.info(f"Manual teacher database record upserted for {student_id}")
+                            except Exception as db_err:
+                                logger.error(f"Failed to upsert manual teacher record to DB: {db_err}")
+                            finally:
+                                cursor.close()
+                                conn.close()
+                    else: # staff
+                        # Upsert to staff table
+                        conn = legacy_database.get_db_connection()
+                        if conn:
+                            try:
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    INSERT INTO staff (
+                                        id_number, employee_id, full_name, department, position, 
+                                        contact_number, emergency_contact_name, emergency_contact_number, 
+                                        address
+                                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    ON DUPLICATE KEY UPDATE
+                                        full_name = VALUES(full_name),
+                                        department = VALUES(department),
+                                        position = VALUES(position),
+                                        contact_number = VALUES(contact_number),
+                                        emergency_contact_name = VALUES(emergency_contact_name),
+                                        emergency_contact_number = VALUES(emergency_contact_number),
+                                        address = VALUES(address)
+                                """, (
+                                    student_id,
+                                    student_id,
+                                    manual_name,
+                                    manual_department or "",
+                                    manual_position or "",
+                                    manual_contact or "",
+                                    manual_emergency_contact or "",
+                                    manual_emergency_number or "",
+                                    manual_address or ""
+                                ))
+                                conn.commit()
+                                logger.info(f"Manual staff database record upserted for {student_id}")
+                            except Exception as db_err:
+                                logger.error(f"Failed to upsert manual staff record to DB: {db_err}")
+                            finally:
+                                cursor.close()
+                                conn.close()
+                else:
+                    # Student data structure
+                    manual_data = {
+                        "id_number": student_id,
+                        "full_name": manual_name,
+                        "grade_level": manual_grade or "",
+                        "section": manual_section or "",
+                        "guardian_name": manual_guardian or "", 
+                        "address": manual_address or "", 
+                        "guardian_contact": manual_contact or "",
+                        "lrn": "",
+                        "type": "student"
+                    }
+                    
+                    # Upsert to students table
+                    conn = legacy_database.get_db_connection()
+                    if conn:
+                        try:
+                            cursor = conn.cursor()
+                            cursor.execute("""
+                                INSERT INTO students (id_number, full_name, grade_level, section, guardian_name, address, guardian_contact, lrn)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                ON DUPLICATE KEY UPDATE
+                                    full_name = VALUES(full_name),
+                                    grade_level = VALUES(grade_level),
+                                    section = VALUES(section),
+                                    guardian_name = VALUES(guardian_name),
+                                    address = VALUES(address),
+                                    guardian_contact = VALUES(guardian_contact)
+                            """, (
+                                student_id,
+                                manual_name,
+                                manual_grade or "",
+                                manual_section or "",
+                                manual_guardian or "",
+                                manual_address or "",
+                                manual_contact or "",
+                                ""
+                            ))
+                            conn.commit()
+                            logger.info(f"Manual student database record upserted for {student_id}")
+                        except Exception as db_err:
+                            logger.error(f"Failed to upsert manual student record to DB: {db_err}")
+                        finally:
+                            cursor.close()
+                            conn.close()
+
                 with open(json_path, 'w') as f:
                     json.dump(manual_data, f)
-                logger.info(f"Manual data saved for {student_id}")
+                logger.info(f"Manual data saved for {student_id} (Type: {entity_type})")
 
-            # 2. Save the image (Triggers Watchdog)
+            # 2. Save the image
             filename = f"{student_id}.jpg"
             save_path = Path(settings.paths.input_dir) / filename
+            
+            # Pre-add to processing set to prevent Watchdog from processing it
+            if hasattr(app.state, 'event_handler'):
+                app.state.event_handler.processing.add(str(save_path))
+                
             with open(save_path, "wb") as buffer: 
                 shutil.copyfileobj(file.file, buffer)
             
             logger.info(f"Capture saved: {save_path}")
+            
+            # 3. Direct processing in the background using BackgroundTasks
+            if hasattr(app.state, 'event_handler') and hasattr(app.state, 'processor'):
+                background_tasks.add_task(
+                    process_capture_task, 
+                    app.state.processor, 
+                    str(save_path), 
+                    app.state.event_handler
+                )
+                logger.info(f"Direct background generation task scheduled for {student_id}")
+            
             return {"status": "saved", "path": str(save_path)}
         except Exception as e: 
             logger.error(f"Capture Error: {e}")
@@ -516,6 +708,7 @@ def _register_legacy_routes(app: FastAPI):
     
     # WebSocket endpoint
     @app.websocket("/ws")
+    @app.websocket("/ws/")
     async def websocket_endpoint(websocket: WebSocket):
         await manager.connect(websocket)
         try:
@@ -524,6 +717,15 @@ def _register_legacy_routes(app: FastAPI):
                 logger.debug(f"WS received: {data}")
         except WebSocketDisconnect:
             manager.disconnect(websocket)
+            
+    # Catch-all WebSocket route to prevent connections from falling through to StaticFiles
+    @app.websocket("/{path:path}")
+    async def websocket_catchall(websocket: WebSocket):
+        logger.warning(f"Closing unexpected WebSocket connection to path: {websocket.url.path}")
+        try:
+            await websocket.close(code=1000)
+        except Exception:
+            pass
     
     # Health check
     @app.get("/api/health")

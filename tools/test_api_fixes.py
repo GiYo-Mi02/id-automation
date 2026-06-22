@@ -117,7 +117,8 @@ def test_search_with_ordering():
     print(f"Status: {response.status_code}")
     
     if response.status_code == 200:
-        results = response.json()
+        data = response.json()
+        results = data.get('results', data) if isinstance(data, dict) else data
         print(f"✅ Found {len(results)} results")
         if results:
             print(f"   First: {results[0].get('full_name')}")

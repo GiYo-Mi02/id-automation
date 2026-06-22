@@ -190,6 +190,10 @@ class GenerationHistoryResponse(BaseModel):
     guardian_name: str = ""
     address: str = ""
     guardian_contact: str = ""
+    user_type: str = "student"
+    grade_level: str = ""
+    position: str = ""
+    department: str = ""
     file_path: Optional[str] = None
     timestamp: Optional[datetime] = None
     
@@ -210,6 +214,10 @@ class GenerationHistoryResponse(BaseModel):
             guardian_name=row.get("guardian_name") or "",
             address=row.get("address") or "",
             guardian_contact=row.get("guardian_contact") or "",
+            user_type=row.get("user_type") or "student",
+            grade_level=row.get("grade_level") or "",
+            position=row.get("position") or row.get("teacher_position") or row.get("staff_position") or "",
+            department=row.get("department") or row.get("teacher_department") or row.get("staff_department") or "",
             file_path=row.get("file_path"),
             timestamp=row.get("timestamp"),
             front_image=f"/output/{student_id}_FRONT.png" if student_id else None,

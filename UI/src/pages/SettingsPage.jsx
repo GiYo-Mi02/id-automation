@@ -407,6 +407,7 @@ function DatabaseSettings({ stats }) {
     setIsClearing(true)
     try {
       await api.post('/api/system/database/clear', {
+        entity_type: clearType,
         clear_type: clearType,
         confirm_text: confirmText,
       })

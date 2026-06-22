@@ -405,11 +405,33 @@ class StudentService:
             # Get records
             cursor.execute(
                 """
-                SELECT id, student_id, full_name, section, lrn,
-                       guardian_name, address, guardian_contact,
-                       file_path, timestamp
-                FROM generation_history
-                ORDER BY timestamp DESC
+                SELECT 
+                    h.id, 
+                    h.student_id, 
+                    COALESCE(s.full_name, t.full_name, st.full_name, h.full_name) as full_name,
+                    COALESCE(s.section, h.section) as section,
+                    COALESCE(s.lrn, h.lrn) as lrn,
+                    COALESCE(s.guardian_name, h.guardian_name) as guardian_name,
+                    COALESCE(s.address, h.address) as address,
+                    COALESCE(s.guardian_contact, h.guardian_contact) as guardian_contact,
+                    s.grade_level,
+                    CASE 
+                        WHEN s.id_number IS NOT NULL THEN 'student'
+                        WHEN t.employee_id IS NOT NULL THEN 'teacher'
+                        WHEN st.employee_id IS NOT NULL THEN 'staff'
+                        ELSE 'student'
+                    END as user_type,
+                    t.department as teacher_department,
+                    t.position as teacher_position,
+                    st.department as staff_department,
+                    st.position as staff_position,
+                    h.file_path, 
+                    h.timestamp
+                FROM generation_history h
+                LEFT JOIN students s ON h.student_id = s.id_number
+                LEFT JOIN teachers t ON h.student_id = t.employee_id
+                LEFT JOIN staff st ON h.student_id = st.employee_id
+                ORDER BY h.timestamp DESC
                 LIMIT %s
                 """,
                 (limit,)

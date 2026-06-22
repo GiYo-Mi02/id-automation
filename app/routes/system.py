@@ -72,6 +72,8 @@ async def get_system_stats(
                 "pool_size": db_health.get("pool_size"),
             },
             "students": student_stats,
+            "storageUsed": round(disk.used / (1024**3), 2),
+            "storageTotal": round(disk.total / (1024**3), 2),
         }
     except Exception as e:
         logger.error(f"Failed to get system stats: {e}")
@@ -272,7 +274,8 @@ async def get_recent_activity(
 # =============================================================================
 
 class ClearDataRequest(BaseModel):
-    entity_type: Literal["students", "teachers", "staff", "all"]
+    entity_type: Optional[Literal["students", "teachers", "staff", "history", "all"]] = None
+    clear_type: Optional[Literal["students", "teachers", "staff", "history", "all"]] = None
     confirm_text: str
     admin_password: Optional[str] = None
 
@@ -305,7 +308,11 @@ async def get_database_status(db: DatabaseManager = Depends(get_db)):
                 "status": "connected",
                 "latency_ms": health.get("latency_ms", 0),
                 "pool_size": health.get("pool_size", 0),
-                "counts": counts
+                "counts": counts,
+                "total_students": counts.get("students", 0),
+                "total_teachers": counts.get("teachers", 0),
+                "total_staff": counts.get("staff", 0),
+                "total_history": counts.get("generation_history", 0)
             }
         else:
             return {"status": "disconnected", "error": "Could not establish connection"}
@@ -321,30 +328,38 @@ async def clear_database_data(request: ClearDataRequest):
     """
     Clear data from database with confirmation.
     
-    Requires matching confirm_text:
+    Supports:
     - students: "DELETE STUDENTS"
     - teachers: "DELETE TEACHERS"
     - staff: "DELETE STAFF"
-    - all: "RESET SYSTEM" (also requires admin_password)
+    - history: "DELETE HISTORY"
+    - all: "RESET SYSTEM"
     """
+    target_type = request.entity_type or request.clear_type
+    if not target_type:
+        raise HTTPException(
+            status_code=400,
+            detail="Either entity_type or clear_type must be specified"
+        )
+        
     # Validate confirmation text
     expected_confirms = {
         "students": "DELETE STUDENTS",
         "teachers": "DELETE TEACHERS",
         "staff": "DELETE STAFF",
+        "history": "DELETE HISTORY",
         "all": "RESET SYSTEM"
     }
     
-    expected = expected_confirms.get(request.entity_type)
+    expected = expected_confirms.get(target_type)
     if request.confirm_text != expected:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid confirmation. Expected: '{expected}'"
         )
     
-    # For "all", require admin password
-    if request.entity_type == "all":
-        # Simple password check (in production, use proper auth)
+    # Simple password check for full system reset (optional in dev)
+    if target_type == "all" and request.admin_password:
         if request.admin_password != "admin123":
             raise HTTPException(status_code=403, detail="Invalid admin password")
     
@@ -356,25 +371,40 @@ async def clear_database_data(request: ClearDataRequest):
         cursor = conn.cursor()
         deleted_counts = {}
         
-        if request.entity_type in ["students", "all"]:
+        if target_type in ["students", "all"]:
             cursor.execute("SELECT COUNT(*) FROM students")
             deleted_counts["students"] = cursor.fetchone()[0]
             cursor.execute("DELETE FROM generation_history")
             cursor.execute("DELETE FROM students")
             
-        if request.entity_type in ["teachers", "all"]:
+        if target_type in ["teachers", "all"]:
             cursor.execute("SELECT COUNT(*) FROM teachers")
             deleted_counts["teachers"] = cursor.fetchone()[0]
-            cursor.execute("DELETE FROM teacher_history")
+            try: cursor.execute("DELETE FROM teacher_history")
+            except: pass
+            try: cursor.execute("DELETE FROM teacher_generation_history")
+            except: pass
             cursor.execute("DELETE FROM teachers")
             
-        if request.entity_type in ["staff", "all"]:
+        if target_type in ["staff", "all"]:
             cursor.execute("SELECT COUNT(*) FROM staff")
             deleted_counts["staff"] = cursor.fetchone()[0]
-            cursor.execute("DELETE FROM staff_history")
+            try: cursor.execute("DELETE FROM staff_history")
+            except: pass
             cursor.execute("DELETE FROM staff")
+            
+        if target_type == "history":
+            cursor.execute("SELECT COUNT(*) FROM generation_history")
+            deleted_counts["history"] = cursor.fetchone()[0]
+            cursor.execute("DELETE FROM generation_history")
+            try: cursor.execute("DELETE FROM teacher_history")
+            except: pass
+            try: cursor.execute("DELETE FROM teacher_generation_history")
+            except: pass
+            try: cursor.execute("DELETE FROM staff_history")
+            except: pass
         
-        if request.entity_type == "all":
+        if target_type == "all":
             # Also clear templates if full reset
             cursor.execute("SELECT COUNT(*) FROM id_templates")
             deleted_counts["templates"] = cursor.fetchone()[0]
@@ -385,7 +415,7 @@ async def clear_database_data(request: ClearDataRequest):
         return {
             "success": True,
             "deleted": deleted_counts,
-            "message": f"Successfully cleared {request.entity_type} data"
+            "message": f"Successfully cleared {target_type} data"
         }
     except Exception as e:
         conn.rollback()
@@ -398,6 +428,10 @@ async def clear_database_data(request: ClearDataRequest):
 # =============================================================================
 # STORAGE MANAGEMENT ENDPOINTS
 # =============================================================================
+
+class CleanupStorageRequest(BaseModel):
+    files: list[str]
+
 
 @system_router.get(
     "/storage/analyze",
@@ -450,18 +484,34 @@ async def analyze_storage():
             cursor.execute("SELECT file_path FROM generation_history WHERE file_path IS NOT NULL")
             db_files = set(row['file_path'] for row in cursor.fetchall())
             
-            cursor.execute("SELECT file_path FROM teacher_history WHERE file_path IS NOT NULL")
-            db_files.update(row['file_path'] for row in cursor.fetchall())
-            
-            cursor.execute("SELECT file_path FROM staff_history WHERE file_path IS NOT NULL")
-            db_files.update(row['file_path'] for row in cursor.fetchall())
+            try:
+                cursor.execute("SELECT file_path FROM teacher_history WHERE file_path IS NOT NULL")
+                db_files.update(row['file_path'] for row in cursor.fetchall())
+            except:
+                pass
+                
+            try:
+                cursor.execute("SELECT file_path FROM staff_history WHERE file_path IS NOT NULL")
+                db_files.update(row['file_path'] for row in cursor.fetchall())
+            except:
+                pass
             
             # Check output directory
             output_path = base_path / "output"
             if output_path.exists():
                 for f in output_path.glob("*.png"):
                     if str(f) not in db_files and f.name not in [Path(p).name for p in db_files]:
-                        orphaned_files.append(str(f))
+                        try:
+                            stat = f.stat()
+                            mod_time = datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                            orphaned_files.append({
+                                "name": f.name,
+                                "path": str(f),
+                                "size": stat.st_size,
+                                "modified": mod_time
+                            })
+                        except Exception as e:
+                            logger.error(f"Error accessing file stats: {e}")
             
             cursor.close()
         except Exception as e:
@@ -469,9 +519,13 @@ async def analyze_storage():
         finally:
             conn.close()
     
-    orphaned_size = sum(Path(f).stat().st_size for f in orphaned_files if Path(f).exists())
+    orphaned_size = sum(f["size"] for f in orphaned_files)
     
     return {
+        "total_files": output_count + input_count + template_count,
+        "linked_files": len(db_files) if conn else 0,
+        "orphaned_files": orphaned_files,
+        "orphaned_total_size": orphaned_size,
         "total_bytes": total_size,
         "total_formatted": format_bytes(total_size),
         "breakdown": {
@@ -503,7 +557,7 @@ async def analyze_storage():
             "bytes": orphaned_size,
             "formatted": format_bytes(orphaned_size),
             "count": len(orphaned_files),
-            "files": orphaned_files[:20]  # Limit to first 20
+            "files": orphaned_files[:20]  # Limit to first 20 for legacy compatibility
         }
     }
 
@@ -521,7 +575,10 @@ def format_bytes(size: int) -> str:
     "/storage/cleanup",
     summary="Clean up orphaned files"
 )
-async def cleanup_storage(confirm: bool = Query(False)):
+async def cleanup_storage(
+    request: CleanupStorageRequest = Body(default=None),
+    confirm: bool = Query(True)
+):
     """Delete orphaned files from storage."""
     if not confirm:
         raise HTTPException(
@@ -529,17 +586,22 @@ async def cleanup_storage(confirm: bool = Query(False)):
             detail="Add ?confirm=true to actually delete files"
         )
     
-    # Get orphaned files
-    analysis = await analyze_storage()
-    orphaned = analysis.get("orphaned", {}).get("files", [])
+    # Determine files to delete
+    if request and request.files:
+        files_to_delete = request.files
+    else:
+        # Fallback to analyzing storage and finding all orphans
+        analysis = await analyze_storage()
+        files_to_delete = [f["path"] for f in analysis.get("orphaned_files", [])]
     
     deleted = []
     errors = []
     
-    for file_path in orphaned:
+    for file_path in files_to_delete:
         try:
-            if Path(file_path).exists():
-                Path(file_path).unlink()
+            p = Path(file_path)
+            if p.exists():
+                p.unlink()
                 deleted.append(file_path)
         except Exception as e:
             errors.append({"file": file_path, "error": str(e)})

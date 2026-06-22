@@ -120,6 +120,8 @@ export default function EnhancedPropertiesPanel({
     )
   }
 
+  console.log('[DEBUG] EnhancedPropertiesPanel rendering selectedLayer:', selectedLayer.id, 'x:', selectedLayer.x, 'y:', selectedLayer.y, 'width:', selectedLayer.width, 'height:', selectedLayer.height)
+
   const isTextLayer = selectedLayer.type === 'text'
   const isImageLayer = selectedLayer.type === 'image'
   const isShapeLayer = selectedLayer.type === 'shape'
@@ -129,8 +131,18 @@ export default function EnhancedPropertiesPanel({
     onLayerUpdate(selectedLayer.id, updates)
   }
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      e.target.blur()
+    }
+  }
+
   return (
-    <aside className="w-[320px] h-full bg-slate-950 border-l border-slate-800 flex flex-col shrink-0">
+    <aside 
+      className="w-[320px] h-full bg-slate-950 border-l border-slate-800 flex flex-col shrink-0"
+      onKeyDown={handleKeyDown}
+    >
       {/* Header */}
       <div className="px-5 py-4 border-b border-slate-800 bg-slate-900/30">
         <div className="flex items-center justify-between mb-1">

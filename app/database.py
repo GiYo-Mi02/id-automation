@@ -123,13 +123,34 @@ def get_recent_history(limit=50):
     conn = get_db_connection()
     if not conn: return []
     cursor = conn.cursor(dictionary=True)
-    # Join with students table to get latest names
+    # Query generation_history with LEFT JOINs to ALL user types (students, teachers, staff)
+    # This ensures we capture ALL activity, not just students
     sql = """
-    SELECT h.timestamp, h.student_id, s.full_name, s.section, s.lrn, 
-           s.guardian_name, s.address, s.guardian_contact 
+    SELECT 
+        h.timestamp, 
+        h.student_id as id_number,
+        COALESCE(s.full_name, t.full_name, st.full_name) as full_name,
+        s.section,
+        s.lrn,
+        s.guardian_name,
+        s.address,
+        s.guardian_contact,
+        CASE 
+            WHEN s.id_number IS NOT NULL THEN 'student'
+            WHEN t.employee_id IS NOT NULL THEN 'teacher'
+            WHEN st.employee_id IS NOT NULL THEN 'staff'
+            ELSE 'unknown'
+        END as user_type,
+        t.department as teacher_department,
+        t.position as teacher_position,
+        st.department as staff_department,
+        st.position as staff_position
     FROM generation_history h
     LEFT JOIN students s ON h.student_id = s.id_number
-    ORDER BY h.timestamp DESC LIMIT %s
+    LEFT JOIN teachers t ON h.student_id = t.employee_id
+    LEFT JOIN staff st ON h.student_id = st.employee_id
+    ORDER BY h.timestamp DESC 
+    LIMIT %s
     """
     cursor.execute(sql, (limit,))
     history = cursor.fetchall()

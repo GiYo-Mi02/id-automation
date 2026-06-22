@@ -61,7 +61,7 @@ export default function CameraViewport({ deviceId, showGuide, onCapture, isCaptu
     onCapture(imageData)
   }, [onCapture, isCapturing])
 
-  // Keyboard shortcut
+  // Keyboard shortcut & Custom capture-request event listener
   useEffect(() => {
     const handleKeyPress = (e) => {
       if (e.code === 'Space' && !e.repeat && document.activeElement.tagName !== 'INPUT') {
@@ -70,8 +70,16 @@ export default function CameraViewport({ deviceId, showGuide, onCapture, isCaptu
       }
     }
 
+    const handleCaptureRequest = () => {
+      captureFrame()
+    }
+
     window.addEventListener('keydown', handleKeyPress)
-    return () => window.removeEventListener('keydown', handleKeyPress)
+    window.addEventListener('capture-request', handleCaptureRequest)
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress)
+      window.removeEventListener('capture-request', handleCaptureRequest)
+    }
   }, [captureFrame])
 
   return (

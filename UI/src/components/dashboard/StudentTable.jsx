@@ -137,7 +137,7 @@ export default function StudentTable({
               <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-[15%]">Status</th>
               <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-[20%]">Time</th>
               <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-[20%]">ID Number</th>
-              <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-[25%]">Student Name</th>
+              <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-[25%]">Name & Role</th>
               <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-[20%]">Actions</th>
             </tr>
           </thead>
@@ -155,7 +155,47 @@ export default function StudentTable({
                 </td>
               </tr>
             ) : (
-              filteredStudents.map((student, index) => (
+              filteredStudents.map((student, index) => {
+                // DEFENSIVE HELPERS (Principal Engineer Pattern)
+                const safeUserType = (student?.user_type || 'student').toLowerCase()
+                const isStudent = safeUserType === 'student' || !student?.user_type
+                
+                // Safe subtitle generator - prevents crashes on mixed data types
+                const getSubtitle = () => {
+                  if (!student) return 'Unknown'
+                  if (isStudent) {
+                    // Student: Show Grade & Section
+                    const grade = student.grade_level || '?'
+                    const section = student.section || 'N/A'
+                    return `Grade ${grade} • ${section}`
+                  }
+                  // Teacher/Staff: Show Position & Department
+                  const position = student.position || 'Staff'
+                  const department = student.department || 'DepEd'
+                  return `${position} • ${department}`
+                }
+                
+                // Badge color mapping
+                const badgeColors = {
+                  student: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
+                  teacher: 'bg-green-500/20 text-green-400 border border-green-500/30',
+                  staff: 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                }
+                
+                // Safe timestamp formatting (fixes timezone bug)
+                const getTimeAgo = () => {
+                  const timestamp = student.created_at || student.timestamp
+                  if (!timestamp) return 'N/A'
+                  try {
+                    // Parse as ISO string (handles UTC->Local automatically)
+                    const date = new Date(timestamp)
+                    return formatDistanceToNow(date.toISOString())
+                  } catch (e) {
+                    return 'Invalid date'
+                  }
+                }
+                
+                return (
                 <tr key={student.id_number || student.student_id || student.id || `student-${index}`} className="group hover:bg-slate-800/30 transition-colors">
                   <td className="px-5 py-2">
                     {student.front_image || student.file_path ? (
@@ -165,14 +205,27 @@ export default function StudentTable({
                     )}
                   </td>
                   <td className="px-5 py-2 text-xs text-slate-400 font-mono">
-                    {student.created_at || student.timestamp ? formatDistanceToNow(student.created_at || student.timestamp) : 'N/A'}
+                    {getTimeAgo()}
                   </td>
                   <td className="px-5 py-2 text-xs text-slate-300 font-mono">
-                    {student.id_number || student.student_id}
+                    {student.id_number || student.student_id || 'N/A'}
                   </td>
-                  <td className="px-5 py-2 text-sm font-medium text-slate-200">
-                    {student.full_name}
-                    {student.section && <span className="ml-2 text-xs text-slate-500">({student.section})</span>}
+                  <td className="px-5 py-2">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-200">{student.full_name || 'Unknown'}</span>
+                        {/* Role Badge - Always show user type */}
+                        <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full uppercase ${
+                          badgeColors[safeUserType] || badgeColors.student
+                        }`}>
+                          {safeUserType.toUpperCase()}
+                        </span>
+                      </div>
+                      {/* Dynamic subtitle - CRASH PROOF */}
+                      <span className="text-xs text-slate-500">
+                        {getSubtitle()}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-5 py-2 text-right">
                     <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -193,7 +246,8 @@ export default function StudentTable({
                     </div>
                   </td>
                 </tr>
-              ))
+              )
+              })
             )}
           </tbody>
         </table>

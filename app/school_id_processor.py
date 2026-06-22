@@ -49,8 +49,10 @@ class SchoolIDProcessor:
         self._ensure_folders()
         
         # Initialize Background Remover
-        try: self.rembg_session = new_session("u2net_human_seg")
-        except: self.rembg_session = new_session("u2net")
+        try: self.rembg_session = new_session("isnet-general-use")
+        except:
+            try: self.rembg_session = new_session("u2net_human_seg")
+            except: self.rembg_session = new_session("u2net")
         
         # Initialize Glam Engine (Makeup)
         self.glam = GlamEngine() if GLAM_AVAILABLE else None
@@ -99,9 +101,9 @@ class SchoolIDProcessor:
                 with open(json_path, 'r') as f:
                     data = json.load(f)
                 
-                # Determine entity type from ID prefix or data
-                entity_type = 'student'
-                if student_id.startswith('EMP-') or student_id.startswith('TCH-'):
+                # Determine entity type from data or ID prefix
+                entity_type = data.get('type', data.get('entity_type', 'student'))
+                if student_id.startswith('EMP-') or student_id.startswith('TCH-') or student_id.startswith('T-'):
                     entity_type = 'teacher'
                 elif student_id.startswith('STF-'):
                     entity_type = 'staff'
@@ -143,17 +145,18 @@ class SchoolIDProcessor:
                 print(f"   JSON parse error: {e}")
                 pass
 
-        # DB Fallback
-        # Detect entity type from ID prefix
+        # DB Fallback - STRICT TYPE DETECTION
+        # Detect entity type from ID prefix (Principal Engineer Fix)
+        clean_id = student_id.strip().upper()
         is_employee = (
-            student_id.upper().startswith('EMP-') or 
-            student_id.upper().startswith('TCH-') or 
-            student_id.upper().startswith('T-') or 
-            student_id.upper().startswith('STF-')
+            clean_id.startswith('EMP') or 
+            clean_id.startswith('TCH') or 
+            clean_id.startswith('T-') or 
+            clean_id.startswith('STF')
         )
         
         if is_employee:
-            # Query teachers table for employee data
+            # FORCE TEACHER/STAFF TYPE - Query teachers table for employee data
             employee = database.get_teacher(student_id)
             
             if not employee:
@@ -165,7 +168,8 @@ class SchoolIDProcessor:
                     'position': '', 'department': '',
                     'address': '', 'contact_number': '',
                     'emergency_contact': '', 'birth_date': '', 'blood_type': '',
-                    'school_year': '2025-2026', 'type': 'teacher'
+                    'school_year': '2025-2026', 
+                    'type': 'teacher'  # FORCE TYPE TO PREVENT STUDENT DEFAULT
                 }
             
             # Map employee database fields to expected format
@@ -211,6 +215,7 @@ class SchoolIDProcessor:
                 'name': str(student['full_name']).upper(),
                 'full_name': str(student['full_name']).upper(),
                 'id_number': str(student['id_number']),
+                'type': 'student',  # EXPLICIT TYPE ENFORCEMENT
                 'lrn': str(student.get('lrn', '') or ''),
                 'grade_level': str(student.get('grade_level', '') or '').upper(),
                 'section': str(student.get('section', '') or '').upper(),
@@ -289,16 +294,31 @@ class SchoolIDProcessor:
             
             try:
                 out = remove(img_pil, session=self.rembg_session, alpha_matting=True)
-            except:
+                # Post-process alpha channel to trim dark background halos
+                if out.mode == 'RGBA':
+                    alpha = out.split()[3]
+                    # Erode the alpha mask by 1 pixel to cut off edge halos
+                    alpha_eroded = alpha.filter(ImageFilter.MinFilter(3))
+                    # Softly feather the edges using a subtle Gaussian blur
+                    alpha_smoothed = alpha_eroded.filter(ImageFilter.GaussianBlur(1))
+                    out.putalpha(alpha_smoothed)
+            except Exception as e:
+                print(f"   Background removal error: {e}")
                 out = img_pil
             
-            # Add white background at bottom
+            # Ensure output is in RGBA mode for transparency support
+            if out.mode != 'RGBA':
+                out = out.convert('RGBA')
+            
+            # Add subtle shadow/blend at bottom (keeps transparency)
             w, h = out.size
             mask = Image.new("L", (w, h), 0)
             draw_m = ImageDraw.Draw(mask)
             draw_m.rectangle([w*0.2, h*0.85, w*0.8, h+20], fill=255)
             mask = mask.filter(ImageFilter.GaussianBlur(20))
             out.paste(img_pil.convert("RGBA"), (0, 0), mask=mask)
+            
+            # CRITICAL: Keep as RGBA for transparency - DO NOT composite on white
             img_final = out
     
             # Get student data

@@ -1,90 +1,78 @@
 {
     "front": {
+        "1": {
+            "x": 0,
+            "y": 0,
+            "width": 590,
+            "height": 1000
+        },
         "photo": {
-            "x": 91,
-            "y": 504,
-            "width": 500,
-            "height": 500
+            "x": 110,
+            "y": 240,
+            "width": 367,
+            "height": 367
         },
         "full_name": {
             "x": 10,
-            "y": 310,
-            "width": 350,
-            "height": 155,
-            "fontSize": 64,
+            "y": 640,
+            "width": 570,
+            "height": 40,
+            "fontSize": 40,
             "fontWeight": "bold",
-            "color": "#ffffff"
+            "color": "#d73c3c"
         },
-        "position": {
-            "x": 258,
-            "y": 257,
-            "width": 522,
-            "height": 69,
-            "fontSize": 65,
+        "lrn": {
+            "x": 269,
+            "y": 701,
+            "width": 169,
+            "height": 30,
+            "fontSize": 26,
             "fontWeight": "bold",
-            "color": "#ffffff"
-        },
-        "deped": {
-            "x": 17,
-            "y": 820,
-            "width": 240,
-            "height": 119
+            "color": "#333333"
         },
         "static": {
-            "x": 30,
-            "y": 940,
-            "width": 212,
-            "height": 39,
-            "fontSize": 27,
+            "x": 381,
+            "y": 853,
+            "width": 150,
+            "height": 30,
+            "fontSize": 16,
             "fontWeight": "bold",
             "color": "#000000"
         }
     },
     "back": {
-        "contact_number": {
+        "rizal_template": {
+            "x": 10,
+            "y": 10,
+            "width": 570,
+            "height": 980
+        },
+        "guardian_name": {
             "x": 200,
-            "y": 740,
-            "width": 200,
-            "height": 30,
-            "fontSize": 26,
+            "y": 160,
+            "width": 300,
+            "height": 80,
+            "fontSize": 38,
             "fontWeight": "bold",
-            "color": "#000000"
+            "color": "#333333"
         },
         "address": {
-            "x": 220,
-            "y": 470,
+            "x": 200,
+            "y": 290,
             "width": 300,
-            "height": 70,
-            "fontSize": 27,
-            "fontWeight": "normal",
-            "color": "#000000"
-        },
-        "birth_date": {
-            "x": 220,
-            "y": 610,
-            "width": 200,
-            "height": 30,
-            "fontSize": 25,
+            "height": 100,
+            "fontSize": 26,
             "fontWeight": "bold",
-            "color": "#000000"
+            "color": "#333333"
         },
-        "emergency_contact_number": {
-            "x": 50,
-            "y": 410,
-            "width": 500,
-            "height": 42,
-            "fontSize": 30,
-            "fontWeight": "normal",
-            "color": "#000000"
-        },
-        "emergency_contact_name": {
-            "x": 40,
-            "y": 360,
-            "width": 502,
-            "height": 46,
-            "fontSize": 40,
-            "fontWeight": "normal",
-            "color": "#000000"
+        "emergency_contact": {
+            "x": 240,
+            "y": 420,
+            "width": 210,
+            "height": 30,
+            "fontSize": 31,
+            "fontWeight": "bold",
+            "color": "#333333"
         }
     }
 }

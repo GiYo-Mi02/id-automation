@@ -109,6 +109,11 @@ export default function CapturePage() {
       // Show success modal with generated ID
       setSuccessData(newCapture)
       
+      // Auto-close success modal after 2 seconds to allow immediate next capture
+      setTimeout(() => {
+        setSuccessData(null)
+      }, 7000)
+      
       // Show toast notification (only once)
       toast.success('ID Generated!', `Successfully created ID for ${newCapture.full_name || newCapture.student_id}`)
       
@@ -120,9 +125,9 @@ export default function CapturePage() {
   // Stable fetch function to prevent infinite loops
   const fetchRecentCaptures = useCallback(async () => {
     try {
-      const data = await api.get('/api/students?page=1&page_size=20&sort_by=created_at&sort_order=DESC')
-      // Backend returns {students: [], total: N, page: 1, page_size: 20}
-      setRecentCaptures(data.students || [])
+      const data = await api.get('/api/history?limit=20')
+      // Backend returns {history: [], total: N, limit: 20}
+      setRecentCaptures(data.history || [])
     } catch (err) {
       console.error('Failed to fetch recent captures:', err)
       setRecentCaptures([])
@@ -223,9 +228,11 @@ export default function CapturePage() {
     } catch (err) {
       console.error('Capture error:', err)
       toast.error('Capture Failed', err.message || 'Could not process the capture')
+    } finally {
+      // Always reset capture state to prevent freezing
       setIsCapturing(false)
     }
-  }, [inputMode, selectedStudent, manualData, isCapturing, toast])
+  }, [inputMode, entityType, selectedStudent, selectedTeacher, selectedStaff, manualData, isCapturing, toast])
 
   const handleViewCapture = (capture) => {
     setModalData(capture)
@@ -286,9 +293,18 @@ export default function CapturePage() {
             onView={handleViewCapture}
             manualData={manualData}
             onManualDataChange={setManualData}
-            onStudentSelect={setSelectedStudent}
-            onTeacherSelect={setSelectedTeacher}
-            onStaffSelect={setSelectedStaff}
+            onStudentSelect={(student) => {
+              setSelectedStudent(student)
+              setEntityType('student')
+            }}
+            onTeacherSelect={(teacher) => {
+              setSelectedTeacher(teacher)
+              setEntityType('teacher')
+            }}
+            onStaffSelect={(staff) => {
+              setSelectedStaff(staff)
+              setEntityType('staff')
+            }}
           />
         </div>
       </div>

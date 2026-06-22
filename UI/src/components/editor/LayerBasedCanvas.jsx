@@ -62,6 +62,9 @@ export default function LayerBasedCanvas({
   const [isResizing, setIsResizing] = useState(false)
   const [resizeHandle, setResizeHandle] = useState(null)
   
+  // Refs for tracking resizing starting state
+  const resizeStartRef = useRef(null)
+  
   // RAF (requestAnimationFrame) refs for performance
   const rafRef = useRef(null)
   const pendingUpdateRef = useRef(null)
@@ -109,10 +112,20 @@ export default function LayerBasedCanvas({
     
     // Check if clicking on resize handle
     const handle = e.target.dataset.resize
+    console.log('[DEBUG] MouseDown on layer:', layer.id, 'Target dataset:', e.target.dataset, 'Handle:', handle)
     if (handle) {
       setIsResizing(true)
       setResizeHandle(handle)
-      setDragStart({ x: e.clientX, y: e.clientY })
+      resizeStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        layerX: layer.x,
+        layerY: layer.y,
+        width: layer.width,
+        height: layer.height,
+        rotation: layer.rotation || 0
+      }
+      console.log('[DEBUG] Resize started. Handle:', handle, 'Start state:', resizeStartRef.current)
       return
     }
     
@@ -122,6 +135,7 @@ export default function LayerBasedCanvas({
       x: e.clientX - (layer.x * scale),
       y: e.clientY - (layer.y * scale),
     })
+    console.log('[DEBUG] Drag started. Drag start:', { x: e.clientX - (layer.x * scale), y: e.clientY - (layer.y * scale) })
   }
 
   // RAF-throttled update function for smooth performance
@@ -157,36 +171,43 @@ export default function LayerBasedCanvas({
           newY = Math.round(newY / gridSize) * gridSize
         }
         
-        // Constrain to canvas
-        newX = Math.max(0, Math.min(canvasWidth - selectedLayer.width, newX))
-        newY = Math.max(0, Math.min(canvasHeight - selectedLayer.height, newY))
+        // Allow canvas bleed - no boundary constraints
+        // Layers can be positioned outside the visible canvas area
         
         onLayerMove(selectedLayerId, newX, newY)
       }
       
-      if (isResizing && resizeHandle) {
-        const dx = (e.clientX - dragStart.x) / scale
-        const dy = (e.clientY - dragStart.y) / scale
+      if (isResizing && resizeHandle && resizeStartRef.current) {
+        const start = resizeStartRef.current
+        const dx = (e.clientX - start.x) / scale
+        const dy = (e.clientY - start.y) / scale
         
         // Get rotation angle in radians
-        const rotation = selectedLayer.rotation || 0
-        const angleRad = (rotation * Math.PI) / 180
+        const angleRad = (start.rotation * Math.PI) / 180
         
         // Use vector projection to calculate local axis deltas
         // Project the mouse delta onto the object's rotated axes
         const localDX = dx * Math.cos(-angleRad) - dy * Math.sin(-angleRad)
         const localDY = dx * Math.sin(-angleRad) + dy * Math.cos(-angleRad)
         
-        let newWidth = selectedLayer.width
-        let newHeight = selectedLayer.height
-        let newX = selectedLayer.x
-        let newY = selectedLayer.y
+        let newWidth = start.width
+        let newHeight = start.height
+        let newX = start.layerX
+        let newY = start.layerY
         
         // Apply deltas in local coordinate space
         if (resizeHandle.includes('e')) newWidth += localDX
-        if (resizeHandle.includes('w')) { newWidth -= localDX; newX += dx }
+        if (resizeHandle.includes('w')) { 
+          newWidth -= localDX
+          newX += localDX * Math.cos(angleRad)
+          newY += localDX * Math.sin(angleRad)
+        }
         if (resizeHandle.includes('s')) newHeight += localDY
-        if (resizeHandle.includes('n')) { newHeight -= localDY; newY += dy }
+        if (resizeHandle.includes('n')) { 
+          newHeight -= localDY
+          newX -= localDY * Math.sin(angleRad)
+          newY += localDY * Math.cos(angleRad)
+        }
         
         // Minimum size
         newWidth = Math.max(20, newWidth)
@@ -200,8 +221,8 @@ export default function LayerBasedCanvas({
           newY = Math.round(newY / gridSize) * gridSize
         }
         
+        console.log('[DEBUG] Resizing layer:', selectedLayerId, 'Handle:', resizeHandle, 'New dims:', { newX, newY, newWidth, newHeight })
         onLayerResize(selectedLayerId, newX, newY, newWidth, newHeight)
-        setDragStart({ x: e.clientX, y: e.clientY })
       }
     })
   }, [isDragging, isResizing, selectedLayerId, layers, dragStart, scale, snapToGrid, gridSize, canvasWidth, canvasHeight, onLayerMove, onLayerResize, resizeHandle, scheduleUpdate])
@@ -217,6 +238,7 @@ export default function LayerBasedCanvas({
     setIsDragging(false)
     setIsResizing(false)
     setResizeHandle(null)
+    resizeStartRef.current = null
   }, [])
 
   // Cleanup RAF on unmount
@@ -272,12 +294,12 @@ export default function LayerBasedCanvas({
   return (
     <div 
       ref={containerRef}
-      className="flex-1 overflow-auto bg-slate-900/50 p-8 flex items-start justify-center"
+      className="flex-1 overflow-auto bg-slate-900/50 p-16 flex items-start justify-center"
     >
       <div
         ref={canvasRef}
         onClick={handleCanvasClick}
-        className="relative shadow-2xl"
+        className="relative shadow-2xl overflow-visible"
         style={{
           width: canvasWidth * scale,
           height: canvasHeight * scale,
@@ -333,6 +355,7 @@ export default function LayerBasedCanvas({
           return (
             <div
               key={layer.id}
+              onMouseDown={(e) => handleLayerMouseDown(e, layer)}
               className={`
                 ${isSelected ? 'ring-2 ring-blue-500 ring-offset-1 ring-offset-transparent' : ''}
               `}
@@ -340,7 +363,6 @@ export default function LayerBasedCanvas({
             >
               {/* Layer Content (rotated) */}
               <div
-                onMouseDown={(e) => handleLayerMouseDown(e, layer)}
                 className={layer.locked ? 'cursor-not-allowed' : ''}
                 style={contentStyle}
               >

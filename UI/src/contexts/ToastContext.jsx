@@ -3,7 +3,7 @@ import Toast from '../components/shared/Toast'
 
 const ToastContext = createContext(null)
 
-let toastId = 0
+let toastId = 0 
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])

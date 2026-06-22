@@ -60,23 +60,15 @@ export default function DashboardPage() {
   const fetchStudents = useCallback(async () => {
     setIsLoading(true)
     try {
-      const params = new URLSearchParams({
-        page: currentPage.toString(),
-        page_size: '50',
-        sort_by: sortBy,
-        sort_order: sortOrder
-      })
-      
-      if (filterSection) {
-        params.append('section', filterSection)
-      }
-      
-      const data = await api.get(`/api/students?${params.toString()}`)
-      // Backend returns {students: [], total: N, page: 1, page_size: 50}
-      setStudents(data.students || [])
-      setTotalStudents(data.total || 0)
+      // Fetch from /api/history to get ALL user types (students, teachers, staff)
+      const data = await api.get(`/api/history?limit=50`)
+      // Backend returns a dictionary with 'history' key or an array of history items
+      const historyList = Array.isArray(data) ? data : (data && Array.isArray(data.history) ? data.history : [])
+      const total = Array.isArray(data) ? data.length : (data && typeof data.total === 'number' ? data.total : historyList.length)
+      setStudents(historyList)
+      setTotalStudents(total)
     } catch (err) {
-      console.error('Failed to fetch students:', err)
+      console.error('Failed to fetch recent activity:', err)
       setStudents([])
       setTotalStudents(0)
     } finally {
