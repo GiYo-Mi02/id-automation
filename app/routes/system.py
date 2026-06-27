@@ -10,12 +10,16 @@ import csv
 import logging
 import psutil
 import shutil
+import time
 from pathlib import Path
 from typing import Optional, Literal
 from datetime import datetime
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, Query, Body, BackgroundTasks
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from PIL import Image
 
+from app.core.config import get_settings
 from app.core.security import verify_api_key
 from app.services.student_service import StudentService, get_student_service
 from app.db.database import DatabaseManager, get_db
@@ -801,4 +805,268 @@ async def import_students_csv(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Import failed: {str(e)}"
+        )
+
+
+def _remove_temp_file(path: Path):
+    """Safely remove a temporary file."""
+    try:
+        if path.exists():
+            path.unlink()
+            logger.info(f"Cleaned up temporary export file: {path}")
+    except Exception as e:
+        logger.error(f"Failed to remove temporary file {path}: {e}")
+
+
+@system_router.get(
+    "/export-pdf",
+    summary="Export student/employee IDs to single PDF",
+    description="Compile student and employee front/back IDs into a single PDF, filtered by school."
+)
+async def export_pdf(
+    background_tasks: BackgroundTasks,
+    school: Optional[str] = Query(None),
+    side: Literal["front", "back"] = Query("front"),
+    api_key: str = Depends(verify_api_key)
+):
+    settings = get_settings()
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database connection failed"
+        )
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # Query students
+        query_students = "SELECT id_number, lrn FROM students"
+        params_students = []
+        if school and school != "All Schools" and school.strip() != "":
+            query_students += " WHERE school = %s"
+            params_students.append(school)
+        cursor.execute(query_students, params_students)
+        students = cursor.fetchall()
+        
+        # Query teachers
+        query_teachers = "SELECT employee_id as id_number, NULL as lrn FROM teachers"
+        params_teachers = []
+        if school and school != "All Schools" and school.strip() != "":
+            query_teachers += " WHERE school = %s"
+            params_teachers.append(school)
+        cursor.execute(query_teachers, params_teachers)
+        teachers = cursor.fetchall()
+        
+        # Query staff
+        query_staff = "SELECT employee_id as id_number, NULL as lrn FROM staff"
+        params_staff = []
+        if school and school != "All Schools" and school.strip() != "":
+            query_staff += " WHERE school = %s"
+            params_staff.append(school)
+        cursor.execute(query_staff, params_staff)
+        staff = cursor.fetchall()
+        
+        cursor.close()
+    finally:
+        conn.close()
+
+    all_entities = students + teachers + staff
+
+    if not all_entities:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No students or employees found matching filters"
+        )
+
+    # Locate the card files
+    output_dir = Path(settings.paths.output_dir)
+    folder_name = "front-id" if side == "front" else "back0id"
+    image_paths = []
+    for s in all_entities:
+        lrn = s.get("lrn")
+        student_id = s.get("id_number")
+        filename_base = lrn if lrn else student_id
+        card_file = output_dir / folder_name / f"{filename_base}.png"
+        if card_file.exists():
+            image_paths.append(card_file)
+
+    if not image_paths:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No {side}-side images generated yet for the selected students/employees"
+        )
+
+    # Compile images using Pillow
+    try:
+        images_to_save = []
+        for img_path in image_paths:
+            img = Image.open(img_path)
+            # PNG may have transparency (RGBA), convert/paste to white RGB background
+            if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                bg = Image.new("RGB", img.size, (255, 255, 255))
+                if img.mode == "RGBA":
+                    bg.paste(img, (0, 0), img)
+                else:
+                    bg.paste(img.convert("RGBA"), (0, 0), img.convert("RGBA"))
+            else:
+                bg = img.convert("RGB")
+            
+            # Draw cutting border around the card edge
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(bg)
+            draw.rectangle(
+                [(0, 0), (bg.size[0] - 1, bg.size[1] - 1)],
+                outline=(0, 0, 0),
+                width=1
+            )
+            images_to_save.append(bg)
+        
+        # Save to temporary file
+        temp_dir = Path(settings.paths.data_dir) / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Unique file name with timestamp
+        timestamp = int(time.time())
+        school_slug = "".join([c if c.isalnum() else "_" for c in school]).lower() if school and school != "All Schools" else "all_schools"
+        pdf_filename = f"{side}_ids_{school_slug}_{timestamp}.pdf"
+        pdf_path = temp_dir / pdf_filename
+
+        # Save first image and append remaining
+        first_img = images_to_save[0]
+        first_img.save(
+            pdf_path,
+            "PDF",
+            save_all=True,
+            append_images=images_to_save[1:]
+        )
+        
+        # Close images
+        for img in images_to_save:
+            img.close()
+
+        # Add background cleanup task
+        background_tasks.add_task(_remove_temp_file, pdf_path)
+        
+        return FileResponse(
+            path=str(pdf_path),
+            filename=pdf_filename,
+            media_type="application/pdf"
+        )
+    except Exception as e:
+        logger.error(f"Failed to compile PDF: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to compile PDF: {str(e)}"
+        )
+
+
+@system_router.get(
+    "/export-zip",
+    summary="Export student/employee IDs to ZIP archive",
+    description="Compile student and employee front/back IDs into a ZIP archive, filtered by school."
+)
+async def export_zip(
+    background_tasks: BackgroundTasks,
+    school: Optional[str] = Query(None),
+    side: Literal["front", "back"] = Query("front"),
+    api_key: str = Depends(verify_api_key)
+):
+    settings = get_settings()
+    conn = get_db_connection()
+    if not conn:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database connection failed"
+        )
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        
+        # Query students
+        query_students = "SELECT id_number, lrn FROM students"
+        params_students = []
+        if school and school != "All Schools" and school.strip() != "":
+            query_students += " WHERE school = %s"
+            params_students.append(school)
+        cursor.execute(query_students, params_students)
+        students = cursor.fetchall()
+        
+        # Query teachers
+        query_teachers = "SELECT employee_id as id_number, NULL as lrn FROM teachers"
+        params_teachers = []
+        if school and school != "All Schools" and school.strip() != "":
+            query_teachers += " WHERE school = %s"
+            params_teachers.append(school)
+        cursor.execute(query_teachers, params_teachers)
+        teachers = cursor.fetchall()
+        
+        # Query staff
+        query_staff = "SELECT employee_id as id_number, NULL as lrn FROM staff"
+        params_staff = []
+        if school and school != "All Schools" and school.strip() != "":
+            query_staff += " WHERE school = %s"
+            params_staff.append(school)
+        cursor.execute(query_staff, params_staff)
+        staff = cursor.fetchall()
+        
+        cursor.close()
+    finally:
+        conn.close()
+
+    all_entities = students + teachers + staff
+
+    if not all_entities:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No students or employees found matching filters"
+        )
+
+    # Locate the card files
+    output_dir = Path(settings.paths.output_dir)
+    folder_name = "front-id" if side == "front" else "back0id"
+    image_paths = []
+    for s in all_entities:
+        lrn = s.get("lrn")
+        student_id = s.get("id_number")
+        filename_base = lrn if lrn else student_id
+        card_file = output_dir / folder_name / f"{filename_base}.png"
+        if card_file.exists():
+            image_paths.append(card_file)
+
+    if not image_paths:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No {side}-side images generated yet for the selected students/employees"
+        )
+
+    # Create temporary zip archive
+    try:
+        import zipfile
+        temp_dir = Path(settings.paths.data_dir) / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = int(time.time())
+        school_slug = "".join([c if c.isalnum() else "_" for c in school]).lower() if school and school != "All Schools" else "all_schools"
+        zip_filename = f"{side}_ids_{school_slug}_{timestamp}.zip"
+        zip_path = temp_dir / zip_filename
+
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for img_path in image_paths:
+                # Add file to ZIP, using its basename to prevent full paths in zip
+                zip_file.write(img_path, img_path.name)
+        
+        # Add background cleanup task
+        background_tasks.add_task(_remove_temp_file, zip_path)
+        
+        return FileResponse(
+            path=str(zip_path),
+            filename=zip_filename,
+            media_type="application/zip"
+        )
+    except Exception as e:
+        logger.error(f"Failed to compile ZIP: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to compile ZIP: {str(e)}"
         )

@@ -12,6 +12,7 @@ export default function EditStudentModal({ isOpen, onClose, student, onSave }) {
     guardian_name: '',
     address: '',
     contact_number: '',
+    school: '',
   })
   const [isSaving, setIsSaving] = useState(false)
   const [errors, setErrors] = useState({})
@@ -27,6 +28,7 @@ export default function EditStudentModal({ isOpen, onClose, student, onSave }) {
         guardian_name: student.guardian_name || '',
         address: student.address || '',
         contact_number: student.contact_number || '',
+        school: student.school || '',
       })
       setErrors({})
     }
@@ -113,11 +115,18 @@ export default function EditStudentModal({ isOpen, onClose, student, onSave }) {
           />
         </div>
 
-        <Input
-          label="LRN Number"
-          value={formData.lrn_number}
-          onChange={(e) => handleChange('lrn_number', e.target.value)}
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="LRN Number"
+            value={formData.lrn_number}
+            onChange={(e) => handleChange('lrn_number', e.target.value)}
+          />
+          <Input
+            label="School"
+            value={formData.school}
+            onChange={(e) => handleChange('school', e.target.value)}
+          />
+        </div>
 
         <Input
           label="Guardian Name"

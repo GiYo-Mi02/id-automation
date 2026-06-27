@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
 
-export default function CameraViewport({ deviceId, showGuide, onCapture, isCapturing }) {
+export default function CameraViewport({ deviceId, showGuide, onCapture, isCapturing, countdown }) {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
@@ -155,6 +155,30 @@ export default function CameraViewport({ deviceId, showGuide, onCapture, isCaptu
       {isCapturing && (
         <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center animate-pulse">
           <div className="text-white text-lg font-bold">Processing...</div>
+        </div>
+      )}
+
+      {/* Countdown Overlay */}
+      {countdown !== null && countdown > 0 && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center z-50 animate-fade-in">
+          <div className="relative flex items-center justify-center w-36 h-36 rounded-full border-4 border-blue-500 bg-navy-900/90 shadow-2xl shadow-blue-500/30">
+            {/* Pulsing outer ring */}
+            <div className="absolute inset-0 rounded-full border-4 border-blue-400 animate-ping opacity-20" />
+            
+            {/* Countdown number with pulsing key restart */}
+            <span 
+              key={countdown} 
+              className="text-white text-7xl font-extrabold font-mono tracking-tighter select-none animate-pulse"
+              style={{
+                animationDuration: '0.8s'
+              }}
+            >
+              {countdown}
+            </span>
+          </div>
+          <div className="mt-4 px-4 py-1.5 rounded-full bg-blue-600/20 border border-blue-500/30 text-blue-400 text-sm font-bold tracking-wide uppercase shadow-lg shadow-blue-500/10">
+            Get Ready!
+          </div>
         </div>
       )}
     </div>

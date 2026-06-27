@@ -53,6 +53,8 @@ def init_db():
         guardian_name VARCHAR(100),
         address VARCHAR(255),
         guardian_contact VARCHAR(50),
+        school VARCHAR(100) DEFAULT '',
+        entry_type VARCHAR(20) DEFAULT 'import',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """)

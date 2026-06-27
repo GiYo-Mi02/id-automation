@@ -24,9 +24,11 @@ router = APIRouter(prefix="/api/teachers", tags=["teachers"])
 @router.get("", response_model=TeacherListResponse)
 def list_teachers(
     page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=1, le=200),
+    per_page: int = Query(50, ge=1, le=10000),
     department: Optional[str] = None,
     status: Optional[str] = None,
+    school: Optional[str] = None,
+    search: Optional[str] = None,
     sort_by: str = "employee_id",
     sort_order: str = "asc",
 ):
@@ -43,6 +45,15 @@ def list_teachers(
         if status:
             count_query += " AND employment_status = %s"
             count_params.append(status)
+            
+        if school:
+            count_query += " AND school = %s"
+            count_params.append(school)
+            
+        if search:
+            count_query += " AND (employee_id LIKE %s OR full_name LIKE %s OR department LIKE %s OR position LIKE %s)"
+            search_param = f"%{search}%"
+            count_params.extend([search_param, search_param, search_param, search_param])
         
         count_result = db_manager.execute_query(
             count_query, 
@@ -62,7 +73,7 @@ def list_teachers(
         query = f"""
             SELECT employee_id, full_name, department, position, specialization,
                    contact_number, emergency_contact_name, emergency_contact_number,
-                   address, birth_date, blood_type, hire_date, employment_status,
+                   address, birth_date, blood_type, hire_date, employment_status, school, entry_type,
                    photo_path, created_at, updated_at
             FROM teachers
             WHERE 1=1
@@ -76,6 +87,15 @@ def list_teachers(
         if status:
             query += " AND employment_status = %s"
             params.append(status)
+            
+        if school:
+            query += " AND school = %s"
+            params.append(school)
+            
+        if search:
+            query += " AND (employee_id LIKE %s OR full_name LIKE %s OR department LIKE %s OR position LIKE %s)"
+            search_param = f"%{search}%"
+            params.extend([search_param, search_param, search_param, search_param])
         
         query += f" ORDER BY {sort_by} {order} LIMIT %s OFFSET %s"
         params.extend([per_page, offset])
@@ -98,11 +118,13 @@ def list_teachers(
                 blood_type=row.get('blood_type') or '',
                 hire_date=row.get('hire_date'),
                 employment_status=row.get('employment_status') or 'active',
+                school=row.get('school') or '',
+                entry_type=row.get('entry_type') or 'import',
                 photo_path=row.get('photo_path'),
                 created_at=row.get('created_at'),
                 updated_at=row.get('updated_at'),
-                front_image=f"/output/{row['employee_id']}_FRONT.png",
-                back_image=f"/output/{row['employee_id']}_BACK.png",
+                front_image=f"/output/front-id/{row['employee_id']}.png",
+                back_image=f"/output/back0id/{row['employee_id']}.png",
             )
             teachers.append(teacher)
         
@@ -126,7 +148,7 @@ def search_teachers(q: str = Query(..., min_length=1), limit: int = Query(10, ge
         query = """
             SELECT employee_id, full_name, department, position, specialization,
                    contact_number, emergency_contact_name, emergency_contact_number,
-                   address, birth_date, blood_type, photo_path
+                   address, birth_date, blood_type, school, entry_type, photo_path
             FROM teachers
             WHERE full_name LIKE %s OR employee_id LIKE %s OR department LIKE %s
             LIMIT %s
@@ -148,8 +170,10 @@ def search_teachers(q: str = Query(..., min_length=1), limit: int = Query(10, ge
                 address=row.get('address') or '',
                 birth_date=row.get('birth_date'),
                 blood_type=row.get('blood_type') or '',
-                front_image=f"/output/{row['employee_id']}_FRONT.png",
-                back_image=f"/output/{row['employee_id']}_BACK.png",
+                school=row.get('school') or '',
+                entry_type=row.get('entry_type') or 'import',
+                front_image=f"/output/front-id/{row['employee_id']}.png",
+                back_image=f"/output/back0id/{row['employee_id']}.png",
             ))
         
         return TeacherSearchResponse(
@@ -170,7 +194,7 @@ def get_teacher(employee_id: str):
         query = """
             SELECT employee_id, full_name, department, position, specialization,
                    contact_number, emergency_contact_name, emergency_contact_number,
-                   address, birth_date, blood_type, hire_date, employment_status,
+                   address, birth_date, blood_type, hire_date, employment_status, school, entry_type,
                    photo_path, created_at, updated_at
             FROM teachers
             WHERE employee_id = %s
@@ -195,11 +219,13 @@ def get_teacher(employee_id: str):
             blood_type=row.get('blood_type') or '',
             hire_date=row.get('hire_date'),
             employment_status=row.get('employment_status') or 'active',
+            school=row.get('school') or '',
+            entry_type=row.get('entry_type') or 'import',
             photo_path=row.get('photo_path'),
             created_at=row.get('created_at'),
             updated_at=row.get('updated_at'),
-            front_image=f"/output/{row['employee_id']}_FRONT.png",
-            back_image=f"/output/{row['employee_id']}_BACK.png",
+            front_image=f"/output/front-id/{row['employee_id']}.png",
+            back_image=f"/output/back0id/{row['employee_id']}.png",
         )
     
     except HTTPException:
@@ -224,8 +250,8 @@ def create_teacher(teacher: TeacherCreateRequest):
             INSERT INTO teachers (
                 employee_id, full_name, department, position, specialization,
                 contact_number, emergency_contact_name, emergency_contact_number,
-                address, birth_date, blood_type, hire_date, employment_status
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                address, birth_date, blood_type, hire_date, employment_status, school, entry_type
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         
         params = (
@@ -242,6 +268,8 @@ def create_teacher(teacher: TeacherCreateRequest):
             teacher.blood_type,
             teacher.hire_date,
             teacher.employment_status,
+            teacher.school or "",
+            teacher.entry_type or "manual",
         )
         
         db_manager.execute_query(insert_query, params, fetch_all=False)
@@ -283,6 +311,8 @@ def update_teacher(employee_id: str, updates: TeacherUpdateRequest):
             'blood_type': 'blood_type',
             'hire_date': 'hire_date',
             'employment_status': 'employment_status',
+            'school': 'school',
+            'entry_type': 'entry_type',
         }
         
         for key, col in field_mapping.items():
@@ -383,7 +413,7 @@ async def preview_teacher_csv_import(file: UploadFile = File(...)):
         headers = reader.fieldnames or []
         
         required_columns = ['employee_id', 'full_name']
-        optional_columns = ['department', 'position', 'specialization', 'contact_number', 'address', 'birth_date', 'blood_type']
+        optional_columns = ['department', 'position', 'specialization', 'contact_number', 'address', 'birth_date', 'blood_type', 'school']
         
         missing_columns = [col for col in required_columns if col not in headers]
         
@@ -450,6 +480,8 @@ async def import_teachers_csv(file: UploadFile = File(...)):
                     address=row.get('address', '').strip(),
                     birth_date=row.get('birth_date', '').strip() or None,
                     blood_type=row.get('blood_type', '').strip() or None,
+                    school=row.get('school', '').strip(),
+                    entry_type='import',
                 )
                 
                 try:
@@ -466,6 +498,8 @@ async def import_teachers_csv(file: UploadFile = File(...)):
                             address=row.get('address', '').strip(),
                             birth_date=row.get('birth_date', '').strip() or None,
                             blood_type=row.get('blood_type', '').strip() or None,
+                            school=row.get('school', '').strip(),
+                            entry_type='import',
                         )
                         update_teacher(row['employee_id'].strip(), update_data)
                         imported += 1

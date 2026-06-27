@@ -21,6 +21,8 @@ class StaffBase(BaseModel):
     address: Optional[str] = None
     birth_date: Optional[date] = None
     blood_type: Optional[str] = None
+    school: Optional[str] = Field(default="", max_length=100)
+    entry_type: Optional[str] = Field(default="manual", max_length=20)
 
 
 class StaffCreateRequest(StaffBase):
@@ -41,6 +43,8 @@ class StaffUpdateRequest(BaseModel):
     address: Optional[str] = None
     birth_date: Optional[date] = None
     blood_type: Optional[str] = None
+    school: Optional[str] = None
+    entry_type: Optional[str] = None
 
 
 class StaffResponse(StaffBase):
@@ -49,6 +53,8 @@ class StaffResponse(StaffBase):
     photo_path: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    front_image: Optional[str] = None
+    back_image: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -80,6 +86,9 @@ class StaffHistoryItem(BaseModel):
     file_path: Optional[str] = None
     template_id: Optional[int] = None
     status: str = "success"
+    school: Optional[str] = None
+    front_image: Optional[str] = None
+    back_image: Optional[str] = None
     timestamp: datetime
 
 

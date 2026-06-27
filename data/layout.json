@@ -1,76 +1,73 @@
 {
     "front": {
-        "1": {
+        "design_taguig_science_high_school_(2)": {
             "x": 0,
             "y": 0,
             "width": 590,
-            "height": 1000
-        },
-        "photo": {
-            "x": 110,
-            "y": 240,
-            "width": 367,
-            "height": 367
+            "height": 1008
         },
         "full_name": {
-            "x": 10,
-            "y": 640,
-            "width": 570,
-            "height": 40,
-            "fontSize": 40,
-            "fontWeight": "bold",
-            "color": "#d73c3c"
-        },
-        "lrn": {
-            "x": 269,
-            "y": 701,
-            "width": 169,
-            "height": 30,
-            "fontSize": 26,
-            "fontWeight": "bold",
-            "color": "#333333"
-        },
-        "static": {
-            "x": 381,
-            "y": 853,
-            "width": 150,
-            "height": 30,
-            "fontSize": 16,
+            "x": 20,
+            "y": 280,
+            "width": 450,
+            "height": 140,
+            "fontSize": 58,
             "fontWeight": "bold",
             "color": "#000000"
+        },
+        "photo": {
+            "x": 210,
+            "y": 410,
+            "width": 479,
+            "height": 601
+        },
+        "section": {
+            "x": 20,
+            "y": 430,
+            "width": 330,
+            "height": 40,
+            "fontSize": 30,
+            "fontWeight": "bold",
+            "color": "#000000"
+        },
+        "lrn": {
+            "x": 40,
+            "y": 710,
+            "width": 160,
+            "height": 150
         }
     },
     "back": {
-        "rizal_template": {
-            "x": 10,
-            "y": 10,
-            "width": 570,
-            "height": 980
+        "tagsci_-_back": {
+            "x": 0,
+            "y": 0,
+            "width": 588,
+            "height": 1002
         },
         "guardian_name": {
-            "x": 200,
-            "y": 160,
-            "width": 300,
-            "height": 80,
-            "fontSize": 38,
-            "fontWeight": "bold",
+            "x": 50,
+            "y": 380,
+            "width": 490,
+            "height": 40,
+            "fontSize": 34,
+            "fontWeight": "normal",
             "color": "#333333"
         },
         "address": {
-            "x": 200,
-            "y": 290,
-            "width": 300,
-            "height": 100,
-            "fontSize": 26,
+            "x": 220,
+            "y": 660,
+            "width": 291,
+            "height": 50,
+            "fontSize": 18,
             "fontWeight": "bold",
-            "color": "#333333"
+            "color": "#000000"
         },
         "emergency_contact": {
-            "x": 240,
-            "y": 420,
-            "width": 210,
-            "height": 30,
-            "fontSize": 31,
+            "x": 200,
+            "y": 740,
+            "width": 283,
+            "height": 25,
+            "fontSize": 23,
             "fontWeight": "bold",
             "color": "#333333"
         }

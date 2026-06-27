@@ -35,12 +35,13 @@ export default function CaptureRightPanel({
   const [isLoadingTeachers, setIsLoadingTeachers] = useState(false)
   const [isLoadingStaff, setIsLoadingStaff] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [filterSchool, setFilterSchool] = useState('')
 
   // Stable fetch function for students
   const fetchStudents = useCallback(async () => {
     setIsLoadingStudents(true)
     try {
-      const data = await authenticatedFetch('/api/students?page=1&page_size=100')
+      const data = await authenticatedFetch('/api/students?page=1&page_size=10000')
       setStudents(data.students || [])
     } catch (err) {
       console.error('Failed to fetch students:', err)
@@ -54,7 +55,7 @@ export default function CaptureRightPanel({
   const fetchTeachers = useCallback(async () => {
     setIsLoadingTeachers(true)
     try {
-      const data = await authenticatedFetch('/api/teachers?page=1&per_page=100')
+      const data = await authenticatedFetch('/api/teachers?page=1&per_page=10000')
       const teacherList = data.teachers || data.items || []
       setTeachers(Array.isArray(teacherList) ? teacherList : [])
     } catch (err) {
@@ -69,7 +70,7 @@ export default function CaptureRightPanel({
   const fetchStaff = useCallback(async () => {
     setIsLoadingStaff(true)
     try {
-      const data = await authenticatedFetch('/api/staff?page=1&per_page=100')
+      const data = await authenticatedFetch('/api/staff?page=1&per_page=10000')
       const staffList = data.items || data.staff || []
       setStaffMembers(Array.isArray(staffList) ? staffList : [])
     } catch (err) {
@@ -98,21 +99,35 @@ export default function CaptureRightPanel({
     }
   }, [entityType, inputMode])
 
-  // Reset page and search when tab changes
+  // Reset page, search and school filter when tab changes
   useEffect(() => {
     setCurrentPage(1)
     setSearchQuery('')
+    setFilterSchool('')
   }, [activeTab])
 
   // Determine what content to show
   const showManualForm = inputMode === 'manual'
   const effectiveTab = showManualForm ? 'form' : activeTab
 
-  // Filter data based on search query
+  // Extract unique schools dynamically from loaded data
+  const getUniqueSchools = () => {
+    const currentData = activeTab === 'students' ? students : activeTab === 'teachers' ? teachers : staffMembers;
+    const schools = currentData.map(item => item.school?.trim().toUpperCase()).filter(Boolean);
+    return ['All Schools', ...new Set(schools)];
+  }
+
+  const uniqueSchools = getUniqueSchools()
+
+  // Filter data based on search query and school
   const filterData = (data, type) => {
-    if (!searchQuery) return data
+    let filtered = data;
+    if (filterSchool) {
+      filtered = filtered.filter(item => (item.school || '').trim().toUpperCase() === filterSchool.trim().toUpperCase());
+    }
+    if (!searchQuery) return filtered
     const query = searchQuery.toLowerCase()
-    return data.filter(item => {
+    return filtered.filter(item => {
       const id = (item.student_id || item.id_number || item.employee_id || '').toLowerCase()
       const name = (item.full_name || '').toLowerCase()
       const dept = (item.department || item.section || '').toLowerCase()
@@ -189,7 +204,7 @@ export default function CaptureRightPanel({
       <div className="flex-1 overflow-y-auto">
         {/* Search Bar - Show for database tabs */}
         {['students', 'teachers', 'staff'].includes(effectiveTab) && (
-          <div className="sticky top-0 z-10 p-3 bg-navy-900 border-b border-navy-700">
+          <div className="sticky top-0 z-10 p-3 bg-navy-900 border-b border-navy-700 space-y-2">
             <div className="relative">
               <MagnifyingGlass
                 size={18}
@@ -212,6 +227,21 @@ export default function CaptureRightPanel({
                 </button>
               )}
             </div>
+            
+            {/* School Filter Dropdown */}
+            {uniqueSchools.length > 1 && (
+              <select
+                value={filterSchool}
+                onChange={(e) => setFilterSchool(e.target.value)}
+                className="w-full h-10 px-3 bg-navy-850 border border-navy-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+              >
+                {uniqueSchools.map(school => (
+                  <option key={school} value={school === 'All Schools' ? '' : school}>
+                    {school}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         )}
 
@@ -562,12 +592,20 @@ function ManualFormContent({ entityType, manualData, onManualChange }) {
           required
         />
 
-        <Input
-          label="LRN Number"
-          value={manualData.lrn_number || ''}
-          onChange={(e) => onManualChange('lrn_number', e.target.value)}
-          placeholder="e.g., 123456789012"
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="LRN Number"
+            value={manualData.lrn_number || ''}
+            onChange={(e) => onManualChange('lrn_number', e.target.value)}
+            placeholder="e.g., 123456789012"
+          />
+          <Input
+            label="School"
+            value={manualData.school || ''}
+            onChange={(e) => onManualChange('school', e.target.value)}
+            placeholder="e.g., Central School"
+          />
+        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <Input
@@ -657,12 +695,20 @@ function ManualFormContent({ entityType, manualData, onManualChange }) {
           />
         </div>
 
-        <Input
-          label="Specialization"
-          value={manualData.specialization || ''}
-          onChange={(e) => onManualChange('specialization', e.target.value)}
-          placeholder="e.g., Physics"
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Specialization"
+            value={manualData.specialization || ''}
+            onChange={(e) => onManualChange('specialization', e.target.value)}
+            placeholder="e.g., Physics"
+          />
+          <Input
+            label="School"
+            value={manualData.school || ''}
+            onChange={(e) => onManualChange('school', e.target.value)}
+            placeholder="e.g., Science High"
+          />
+        </div>
 
         <Input
           label="Contact Number"
@@ -743,12 +789,20 @@ function ManualFormContent({ entityType, manualData, onManualChange }) {
         />
       </div>
 
-      <Input
-        label="Contact Number"
-        value={manualData.contact_number || ''}
-        onChange={(e) => onManualChange('contact_number', e.target.value)}
-        placeholder="e.g., 09123456789"
-      />
+      <div className="grid grid-cols-2 gap-4">
+        <Input
+          label="Contact Number"
+          value={manualData.contact_number || ''}
+          onChange={(e) => onManualChange('contact_number', e.target.value)}
+          placeholder="e.g., 09123456789"
+        />
+        <Input
+          label="School"
+          value={manualData.school || ''}
+          onChange={(e) => onManualChange('school', e.target.value)}
+          placeholder="e.g., High School"
+        />
+      </div>
 
       <div className="pt-4 border-t border-navy-700">
         <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wide mb-4">Emergency Contact</h3>

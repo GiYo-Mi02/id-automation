@@ -425,7 +425,14 @@ def render_qr_code_layer(
     height = int(layer.get('height', 100))
     
     field = layer.get('field', 'id_number')
-    content = str(data.get(field, ''))
+    
+    # Base QR code content on LRN for students, even if template requests id_number
+    if data.get('type') == 'student' and field == 'id_number':
+        content = str(data.get('lrn', '')).strip()
+        if not content:
+            content = str(data.get('id_number', ''))
+    else:
+        content = str(data.get(field, ''))
     
     if not content:
         return card

@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { CameraPlus, Database, PencilSimple, Student, Chalkboard, Users } from '@phosphor-icons/react'
+import { CameraPlus, Database, PencilSimple, Student, Chalkboard, Users, Timer } from '@phosphor-icons/react'
 import { Dropdown, Button } from '../shared'
 
 // Entity type configuration
@@ -18,10 +18,13 @@ export default function ControlBar({
   entityType = 'student',
   onEntityTypeChange,
   selectedStudent,
+  onStudentSelect,
   selectedTeacher,
   selectedStaff,
   manualData,
   isCapturing,
+  countdown = null,
+  onStartCountdown,
 }) {
   const handleCaptureClick = () => {
     // Trigger capture from parent which has the canvas
@@ -160,16 +163,30 @@ export default function ControlBar({
           </div>
 
           {/* Capture Button */}
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <Button
               variant="primary"
               size="lg"
               icon={CameraPlus}
               loading={isCapturing}
+              disabled={countdown !== null}
               onClick={handleCaptureClick}
-              className="w-full h-14 shadow-lg shadow-blue-600/30 hover:shadow-glow-blue"
+              className="flex-1 h-14 shadow-lg shadow-blue-600/30 hover:shadow-glow-blue font-bold text-sm tracking-wider"
             >
               {isCapturing ? 'PROCESSING...' : 'CAPTURE'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              icon={countdown !== null && countdown > 0 ? null : Timer}
+              disabled={isCapturing || countdown !== null}
+              onClick={onStartCountdown}
+              className="w-14 h-14 flex items-center justify-center p-0 border border-navy-700 hover:border-blue-500 hover:text-blue-400 hover:bg-navy-800 transition-all duration-200"
+              title="Capture with 3-second countdown"
+            >
+              {countdown !== null && countdown > 0 ? (
+                <span className="font-extrabold font-mono text-lg">{countdown}</span>
+              ) : null}
             </Button>
           </div>
         </div>

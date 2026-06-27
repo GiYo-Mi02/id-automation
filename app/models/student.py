@@ -60,18 +60,20 @@ class StudentCreateRequest(BaseModel):
     guardian_name: Optional[str] = Field(default="", max_length=100, description="Guardian's name")
     address: Optional[str] = Field(default="", max_length=255, description="Home address")
     guardian_contact: Optional[str] = Field(default="", max_length=50, description="Guardian's contact number")
+    school: Optional[str] = Field(default="", max_length=100, description="School name")
+    entry_type: Optional[str] = Field(default="manual", max_length=20, description="Source type (manual or import)")
     
     @field_validator("id_number")
     @classmethod
     def validate_id(cls, v: str) -> str:
         return validate_student_id_format(v)
     
-    @field_validator("full_name", "guardian_name", "section", "address")
+    @field_validator("full_name", "guardian_name", "section", "address", "school")
     @classmethod
     def sanitize_names(cls, v: str) -> str:
         return sanitize_string(v).upper() if v else ""
     
-    @field_validator("lrn", "guardian_contact")
+    @field_validator("lrn", "guardian_contact", "entry_type")
     @classmethod
     def sanitize_fields(cls, v: str) -> str:
         return sanitize_string(v) if v else ""
@@ -98,13 +100,15 @@ class StudentUpdateRequest(BaseModel):
     guardian_name: Optional[str] = Field(default=None, max_length=100)
     address: Optional[str] = Field(default=None, max_length=255)
     guardian_contact: Optional[str] = Field(default=None, max_length=50)
+    school: Optional[str] = Field(default=None, max_length=100)
+    entry_type: Optional[str] = Field(default=None, max_length=20)
     
-    @field_validator("full_name", "guardian_name", "section", "address")
+    @field_validator("full_name", "guardian_name", "section", "address", "school")
     @classmethod
     def sanitize_names(cls, v: Optional[str]) -> Optional[str]:
         return sanitize_string(v).upper() if v else v
     
-    @field_validator("lrn", "guardian_contact")
+    @field_validator("lrn", "guardian_contact", "entry_type")
     @classmethod
     def sanitize_fields(cls, v: Optional[str]) -> Optional[str]:
         return sanitize_string(v) if v else v
@@ -148,6 +152,8 @@ class StudentResponse(BaseModel):
     guardian_name: str = ""
     address: str = ""
     guardian_contact: str = ""
+    school: str = ""
+    entry_type: str = "import"
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -190,6 +196,7 @@ class GenerationHistoryResponse(BaseModel):
     guardian_name: str = ""
     address: str = ""
     guardian_contact: str = ""
+    school: str = ""
     user_type: str = "student"
     grade_level: str = ""
     position: str = ""
@@ -205,23 +212,30 @@ class GenerationHistoryResponse(BaseModel):
     def from_db_row(cls, row: dict) -> "GenerationHistoryResponse":
         """Create from database row with URL generation. Handles NULL values."""
         student_id = row.get("student_id") or ""
+        lrn = row.get("lrn") or ""
+        user_type = row.get("user_type") or "student"
+        
+        is_student = user_type == "student"
+        filename_base = lrn if (is_student and lrn) else student_id
+        
         return cls(
             id=row.get("id", 0),
             student_id=student_id,
             full_name=row.get("full_name") or "",
             section=row.get("section") or "",
-            lrn=row.get("lrn") or "",
+            lrn=lrn,
             guardian_name=row.get("guardian_name") or "",
             address=row.get("address") or "",
             guardian_contact=row.get("guardian_contact") or "",
-            user_type=row.get("user_type") or "student",
+            school=row.get("school") or "",
+            user_type=user_type,
             grade_level=row.get("grade_level") or "",
             position=row.get("position") or row.get("teacher_position") or row.get("staff_position") or "",
             department=row.get("department") or row.get("teacher_department") or row.get("staff_department") or "",
             file_path=row.get("file_path"),
             timestamp=row.get("timestamp"),
-            front_image=f"/output/{student_id}_FRONT.png" if student_id else None,
-            back_image=f"/output/{student_id}_BACK.png" if student_id else None,
+            front_image=f"/output/front-id/{filename_base}.png" if filename_base else None,
+            back_image=f"/output/back0id/{filename_base}.png" if filename_base else None,
         )
 
 

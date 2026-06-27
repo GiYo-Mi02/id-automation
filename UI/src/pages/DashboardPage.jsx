@@ -23,6 +23,7 @@ export default function DashboardPage() {
   const [sortBy, setSortBy] = useState('created_at')
   const [sortOrder, setSortOrder] = useState('DESC')
   const [filterSection, setFilterSection] = useState('')
+  const [filterSchool, setFilterSchool] = useState('')
   
   const [editingStudent, setEditingStudent] = useState(null)
   const [viewingStudent, setViewingStudent] = useState(null)
@@ -61,7 +62,7 @@ export default function DashboardPage() {
     setIsLoading(true)
     try {
       // Fetch from /api/history to get ALL user types (students, teachers, staff)
-      const data = await api.get(`/api/history?limit=50`)
+      const data = await api.get(`/api/history?limit=10000`)
       // Backend returns a dictionary with 'history' key or an array of history items
       const historyList = Array.isArray(data) ? data : (data && Array.isArray(data.history) ? data.history : [])
       const total = Array.isArray(data) ? data.length : (data && typeof data.total === 'number' ? data.total : historyList.length)
@@ -141,6 +142,45 @@ export default function DashboardPage() {
     }
   }
 
+  const handleExport = async (selectedSchool, selectedSide, selectedFormat) => {
+    try {
+      const isZip = selectedFormat === 'zip'
+      const sideParam = selectedSide || 'front'
+      const formatLabel = isZip ? 'ZIP' : 'PDF'
+      toast.info(`Exporting ${formatLabel}`, `Preparing ${formatLabel} package, please wait...`)
+      
+      const endpoint = isZip ? '/api/system/export-zip' : '/api/system/export-pdf'
+      const schoolQuery = selectedSchool ? `?school=${encodeURIComponent(selectedSchool)}&side=${sideParam}` : `?side=${sideParam}`
+      const response = await fetch(`${endpoint}${schoolQuery}`, {
+        method: 'GET',
+        headers: {
+          'X-API-Key': import.meta.env.VITE_API_KEY
+        }
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || `HTTP ${response.status}: Failed to export`)
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const schoolSlug = selectedSchool ? selectedSchool.toLowerCase().replace(/\s+/g, '_') : 'all_schools'
+      const fileExt = isZip ? 'zip' : 'pdf'
+      a.download = `${sideParam}_ids_${schoolSlug}.${fileExt}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success(`${formatLabel} Exported`, `Student & employee ${sideParam}-side IDs downloaded successfully`)
+    } catch (err) {
+      console.error('Failed to export:', err)
+      toast.error('Export Failed', err.message || 'Could not compile/package and download IDs')
+    }
+  }
+
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-200 font-sans">
       <DashboardTopBar status={status} />
@@ -171,6 +211,13 @@ export default function DashboardPage() {
                 setFilterSection(section)
                 setCurrentPage(1)
               }}
+              filterSchool={filterSchool}
+              onSchoolFilterChange={(school) => {
+                setFilterSchool(school)
+                setFilterSection('')
+                setCurrentPage(1)
+              }}
+              onExport={handleExport}
               onRefresh={fetchStudents}
               onEdit={handleEditStudent}
               onView={handleViewStudent}

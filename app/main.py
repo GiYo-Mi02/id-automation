@@ -123,8 +123,6 @@ class IDGenerationHandler(FileSystemEventHandler):
     def _broadcast_success(self, filepath: str):
         """Broadcast successful generation to WebSocket clients."""
         student_id = Path(filepath).stem
-        front_file = f"{student_id}_FRONT.png"
-        back_file = f"{student_id}_BACK.png"
         
         # Get student/teacher/staff data from processor helper
         student_data = None
@@ -136,6 +134,23 @@ class IDGenerationHandler(FileSystemEventHandler):
         if not student_data:
             student_data = legacy_database.get_student(student_id)
             
+        is_student = True
+        if student_data and student_data.get('type') in ['teacher', 'staff']:
+            is_student = False
+            
+        if student_data:
+            if is_student:
+                filename_base = student_data.get('lrn', '').strip()
+                if not filename_base:
+                    filename_base = student_data.get('id', student_id)
+            else:
+                filename_base = student_data.get('id', student_id)
+        else:
+            filename_base = student_id
+            
+        front_file = f"front-id/{filename_base}.png"
+        back_file = f"back0id/{filename_base}.png"
+        
         full_name = student_data.get('full_name', '') if student_data else ''
         section = student_data.get('section', '') if student_data else ''
         lrn = student_data.get('lrn', '') if student_data else ''
@@ -520,6 +535,8 @@ def _register_legacy_routes(app: FastAPI):
         manual_guardian: str = Form(None),
         manual_address: str = Form(None),
         manual_contact: str = Form(None),
+        manual_lrn: str = Form(None),
+        manual_school: str = Form(None),
         # Manual Fields (Teacher/Staff)
         manual_department: str = Form(None),
         manual_position: str = Form(None),
@@ -546,6 +563,8 @@ def _register_legacy_routes(app: FastAPI):
                         "contact_number": manual_contact or "",
                         "emergency_contact": manual_emergency_contact or "",
                         "emergency_contact_number": manual_emergency_number or "",
+                        "school": manual_school or "",
+                        "entry_type": "manual",
                         "type": entity_type
                     }
                     
@@ -559,8 +578,8 @@ def _register_legacy_routes(app: FastAPI):
                                     INSERT INTO teachers (
                                         employee_id, full_name, department, position, specialization, 
                                         contact_number, emergency_contact_name, emergency_contact_number, 
-                                        address, employment_status
-                                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        address, employment_status, school, entry_type
+                                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                     ON DUPLICATE KEY UPDATE
                                         full_name = VALUES(full_name),
                                         department = VALUES(department),
@@ -569,7 +588,9 @@ def _register_legacy_routes(app: FastAPI):
                                         contact_number = VALUES(contact_number),
                                         emergency_contact_name = VALUES(emergency_contact_name),
                                         emergency_contact_number = VALUES(emergency_contact_number),
-                                        address = VALUES(address)
+                                        address = VALUES(address),
+                                        school = VALUES(school),
+                                        entry_type = VALUES(entry_type)
                                 """, (
                                     student_id,
                                     manual_name,
@@ -580,7 +601,9 @@ def _register_legacy_routes(app: FastAPI):
                                     manual_emergency_contact or "",
                                     manual_emergency_number or "",
                                     manual_address or "",
-                                    "active"
+                                    "active",
+                                    manual_school or "",
+                                    "manual"
                                 ))
                                 conn.commit()
                                 logger.info(f"Manual teacher database record upserted for {student_id}")
@@ -599,8 +622,8 @@ def _register_legacy_routes(app: FastAPI):
                                     INSERT INTO staff (
                                         id_number, employee_id, full_name, department, position, 
                                         contact_number, emergency_contact_name, emergency_contact_number, 
-                                        address
-                                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        address, school, entry_type
+                                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                     ON DUPLICATE KEY UPDATE
                                         full_name = VALUES(full_name),
                                         department = VALUES(department),
@@ -608,7 +631,9 @@ def _register_legacy_routes(app: FastAPI):
                                         contact_number = VALUES(contact_number),
                                         emergency_contact_name = VALUES(emergency_contact_name),
                                         emergency_contact_number = VALUES(emergency_contact_number),
-                                        address = VALUES(address)
+                                        address = VALUES(address),
+                                        school = VALUES(school),
+                                        entry_type = VALUES(entry_type)
                                 """, (
                                     student_id,
                                     student_id,
@@ -618,7 +643,9 @@ def _register_legacy_routes(app: FastAPI):
                                     manual_contact or "",
                                     manual_emergency_contact or "",
                                     manual_emergency_number or "",
-                                    manual_address or ""
+                                    manual_address or "",
+                                    manual_school or "",
+                                    "manual"
                                 ))
                                 conn.commit()
                                 logger.info(f"Manual staff database record upserted for {student_id}")
@@ -637,7 +664,9 @@ def _register_legacy_routes(app: FastAPI):
                         "guardian_name": manual_guardian or "", 
                         "address": manual_address or "", 
                         "guardian_contact": manual_contact or "",
-                        "lrn": "",
+                        "lrn": manual_lrn or "",
+                        "school": manual_school or "",
+                        "entry_type": "manual",
                         "type": "student"
                     }
                     
@@ -647,15 +676,18 @@ def _register_legacy_routes(app: FastAPI):
                         try:
                             cursor = conn.cursor()
                             cursor.execute("""
-                                INSERT INTO students (id_number, full_name, grade_level, section, guardian_name, address, guardian_contact, lrn)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                INSERT INTO students (id_number, full_name, grade_level, section, guardian_name, address, guardian_contact, lrn, school, entry_type)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                 ON DUPLICATE KEY UPDATE
                                     full_name = VALUES(full_name),
                                     grade_level = VALUES(grade_level),
                                     section = VALUES(section),
                                     guardian_name = VALUES(guardian_name),
                                     address = VALUES(address),
-                                    guardian_contact = VALUES(guardian_contact)
+                                    guardian_contact = VALUES(guardian_contact),
+                                    lrn = VALUES(lrn),
+                                    school = VALUES(school),
+                                    entry_type = VALUES(entry_type)
                             """, (
                                 student_id,
                                 manual_name,
@@ -664,7 +696,9 @@ def _register_legacy_routes(app: FastAPI):
                                 manual_guardian or "",
                                 manual_address or "",
                                 manual_contact or "",
-                                ""
+                                manual_lrn or "",
+                                manual_school or "",
+                                "manual"
                             ))
                             conn.commit()
                             logger.info(f"Manual student database record upserted for {student_id}")

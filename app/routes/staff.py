@@ -28,10 +28,12 @@ router = APIRouter(prefix="/api/staff", tags=["Staff"])
 @router.get("", response_model=StaffListResponse)
 async def list_staff(
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
-    department: Optional[str] = None
+    per_page: int = Query(50, ge=1, le=10000),
+    department: Optional[str] = None,
+    school: Optional[str] = None,
+    search: Optional[str] = None
 ):
-    """List all staff with pagination"""
+    """List all staff with pagination and filtering"""
     conn = get_db_connection()
     if not conn:
         raise HTTPException(status_code=500, detail="Database connection failed")
@@ -40,11 +42,20 @@ async def list_staff(
         cursor = conn.cursor(dictionary=True)
         
         # Build query
-        where_clause = ""
+        where_clauses = ["1=1"]
         params = []
         if department:
-            where_clause = "WHERE department = %s"
+            where_clauses.append("department = %s")
             params.append(department)
+        if school:
+            where_clauses.append("school = %s")
+            params.append(school)
+        if search:
+            where_clauses.append("(id_number LIKE %s OR employee_id LIKE %s OR full_name LIKE %s OR department LIKE %s OR position LIKE %s)")
+            search_param = f"%{search}%"
+            params.extend([search_param, search_param, search_param, search_param, search_param])
+            
+        where_clause = "WHERE " + " AND ".join(where_clauses)
         
         # Get total count
         cursor.execute(f"SELECT COUNT(*) as total FROM staff {where_clause}", params)
@@ -61,8 +72,15 @@ async def list_staff(
         items = cursor.fetchall()
         pages = math.ceil(total / per_page) if total > 0 else 1
         
+        staff_items = []
+        for row in (items or []):
+            row_dict = dict(row)
+            row_dict['front_image'] = f"/output/front-id/{row['id_number']}.png"
+            row_dict['back_image'] = f"/output/back0id/{row['id_number']}.png"
+            staff_items.append(row_dict)
+            
         return StaffListResponse(
-            items=items,
+            items=staff_items,
             total=total,
             page=page,
             per_page=per_page,
@@ -100,10 +118,17 @@ async def search_staff(
         
         results = cursor.fetchall()
         
+        staff_results = []
+        for row in (results or []):
+            row_dict = dict(row)
+            row_dict['front_image'] = f"/output/front-id/{row['id_number']}.png"
+            row_dict['back_image'] = f"/output/back0id/{row['id_number']}.png"
+            staff_results.append(row_dict)
+            
         return StaffSearchResponse(
-            results=results,
+            results=staff_results,
             query=q,
-            count=len(results)
+            count=len(staff_results)
         )
     finally:
         cursor.close()
@@ -125,7 +150,11 @@ async def get_staff(id_number: str):
         if not staff:
             raise HTTPException(status_code=404, detail="Staff not found")
         
-        return staff
+        staff_dict = dict(staff)
+        staff_dict['front_image'] = f"/output/front-id/{staff['id_number']}.png"
+        staff_dict['back_image'] = f"/output/back0id/{staff['id_number']}.png"
+        
+        return staff_dict
     finally:
         cursor.close()
         conn.close()
@@ -153,19 +182,19 @@ async def create_staff(staff: StaffCreateRequest):
         cursor.execute("""
             INSERT INTO staff (id_number, employee_id, full_name, department, position,
                               contact_number, emergency_contact_name, emergency_contact_number,
-                              address, birth_date, blood_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                              address, birth_date, blood_type, school, entry_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, [
             staff.id_number, staff.employee_id, staff.full_name, staff.department,
             staff.position, staff.contact_number, staff.emergency_contact_name,
-            staff.emergency_contact_number, staff.address, staff.birth_date, staff.blood_type
+            staff.emergency_contact_number, staff.address, staff.birth_date, staff.blood_type,
+            staff.school or "", staff.entry_type or "manual"
         ])
         
         conn.commit()
         
-        # Fetch created record
-        cursor.execute("SELECT * FROM staff WHERE id_number = %s", [staff.id_number])
-        return cursor.fetchone()
+        # Fetch created record using helper
+        return await get_staff(staff.id_number)
     finally:
         cursor.close()
         conn.close()
@@ -204,10 +233,9 @@ async def update_staff(id_number: str, updates: StaffUpdateRequest):
             """, values)
             conn.commit()
         
-        # Fetch updated record
+        # Fetch updated record using helper
         new_id = updates.id_number if updates.id_number else id_number
-        cursor.execute("SELECT * FROM staff WHERE id_number = %s", [new_id])
-        return cursor.fetchone()
+        return await get_staff(new_id)
     finally:
         cursor.close()
         conn.close()
@@ -256,9 +284,16 @@ async def get_staff_history(id_number: str, limit: int = Query(50, ge=1, le=200)
         
         items = cursor.fetchall()
         
+        history_items = []
+        for row in (items or []):
+            row_dict = dict(row)
+            row_dict['front_image'] = f"/output/front-id/{row['staff_id']}.png"
+            row_dict['back_image'] = f"/output/back0id/{row['staff_id']}.png"
+            history_items.append(row_dict)
+            
         return StaffHistoryResponse(
-            items=items,
-            total=len(items)
+            items=history_items,
+            total=len(history_items)
         )
     finally:
         cursor.close()
@@ -288,7 +323,7 @@ async def preview_staff_csv_import(file: UploadFile = File(...)):
         headers = reader.fieldnames or []
         
         required_columns = ['id_number', 'employee_id', 'full_name']
-        optional_columns = ['department', 'position', 'contact_number', 'address', 'birth_date', 'blood_type']
+        optional_columns = ['department', 'position', 'contact_number', 'address', 'birth_date', 'blood_type', 'school']
         
         missing_columns = [col for col in required_columns if col not in headers]
         
@@ -318,8 +353,8 @@ async def preview_staff_csv_import(file: UploadFile = File(...)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process CSV: {str(e)}"
         )
-
-
+        
+        
 @router.post("/import", summary="Import staff from CSV")
 async def import_staff_csv(file: UploadFile = File(...)):
     """Import staff records from CSV file."""
@@ -355,8 +390,8 @@ async def import_staff_csv(file: UploadFile = File(...)):
                     # Try to insert
                     cursor.execute("""
                         INSERT INTO staff (id_number, employee_id, full_name, department, position, 
-                                          contact_number, address, birth_date, blood_type)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                          contact_number, address, birth_date, blood_type, school, entry_type)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON DUPLICATE KEY UPDATE
                             full_name = VALUES(full_name),
                             department = VALUES(department),
@@ -364,7 +399,9 @@ async def import_staff_csv(file: UploadFile = File(...)):
                             contact_number = VALUES(contact_number),
                             address = VALUES(address),
                             birth_date = VALUES(birth_date),
-                            blood_type = VALUES(blood_type)
+                            blood_type = VALUES(blood_type),
+                            school = VALUES(school),
+                            entry_type = VALUES(entry_type)
                     """, (
                         row['id_number'].strip(),
                         row['employee_id'].strip(),
@@ -375,6 +412,8 @@ async def import_staff_csv(file: UploadFile = File(...)):
                         row.get('address', '').strip(),
                         row.get('birth_date', '').strip() or None,
                         row.get('blood_type', '').strip() or None,
+                        row.get('school', '').strip(),
+                        'import'
                     ))
                     imported += 1
                             

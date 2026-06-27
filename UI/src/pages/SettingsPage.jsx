@@ -21,6 +21,7 @@ import {
 } from '@phosphor-icons/react'
 import { Button, Toggle, Slider, Card, Spinner } from '../components/shared'
 import ImportDataSection from '../components/settings/ImportDataSection'
+import ExportDataSection from '../components/settings/ExportDataSection'
 import { clsx } from 'clsx'
 
 const TABS = [
@@ -195,6 +196,11 @@ function GeneralSettings({ settings, onChange }) {
         <ImportDataSection onImportComplete={(count) => {
           console.log(`Imported ${count} students`)
         }} />
+      </Card>
+
+      <Card className="p-6">
+        <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4">Export Data</h3>
+        <ExportDataSection />
       </Card>
 
       <Card className="p-6">

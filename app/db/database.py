@@ -314,12 +314,15 @@ class DatabaseManager:
                     emergency_contact_number VARCHAR(50),
                     school_year VARCHAR(20) DEFAULT '2025-2026',
                     status ENUM('active', 'inactive', 'graduated', 'transferred') DEFAULT 'active',
+                    school VARCHAR(100) DEFAULT '',
+                    entry_type VARCHAR(20) DEFAULT 'import',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_full_name (full_name),
                     INDEX idx_section (section),
                     INDEX idx_grade_level (grade_level),
-                    INDEX idx_students_created_at (created_at DESC)
+                    INDEX idx_students_created_at (created_at DESC),
+                    INDEX idx_students_school (school)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
@@ -340,12 +343,15 @@ class DatabaseManager:
                     photo_path VARCHAR(255),
                     hire_date DATE,
                     employment_status ENUM('active', 'inactive', 'on_leave') DEFAULT 'active',
+                    school VARCHAR(100) DEFAULT '',
+                    entry_type VARCHAR(20) DEFAULT 'import',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_full_name (full_name),
                     INDEX idx_department (department),
                     INDEX idx_position (position),
-                    INDEX idx_status (employment_status)
+                    INDEX idx_status (employment_status),
+                    INDEX idx_teachers_school (school)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
@@ -365,11 +371,14 @@ class DatabaseManager:
                     birth_date DATE,
                     blood_type VARCHAR(10),
                     photo_path VARCHAR(255),
+                    school VARCHAR(100) DEFAULT '',
+                    entry_type VARCHAR(20) DEFAULT 'import',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     PRIMARY KEY (id),
                     UNIQUE KEY uk_staff_id_number (id_number),
-                    UNIQUE KEY uk_staff_employee_id (employee_id)
+                    UNIQUE KEY uk_staff_employee_id (employee_id),
+                    INDEX idx_staff_school (school)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
@@ -520,7 +529,7 @@ class DatabaseManager:
             if template_count == 0:
                 student_canvas = '{"width": 591, "height": 1004, "backgroundColor": "#FFFFFF", "backgroundImage": null}'
                 student_front = '{"layers": [{"id": "photo-1", "type": "image", "name": "Photo", "field": "photo", "x": 196, "y": 180, "width": 200, "height": 250, "zIndex": 1, "visible": true, "locked": false, "objectFit": "cover", "borderRadius": 8}, {"id": "name-1", "type": "text", "name": "Full Name", "field": "full_name", "text": "STUDENT NAME", "x": 50, "y": 460, "width": 491, "height": 40, "zIndex": 2, "visible": true, "locked": false, "fontSize": 28, "fontFamily": "Arial", "fontWeight": "bold", "color": "#000000", "textAlign": "center", "wordWrap": false, "uppercase": true}, {"id": "id-1", "type": "text", "name": "ID Number", "field": "id_number", "text": "2024-001", "x": 50, "y": 510, "width": 491, "height": 30, "zIndex": 3, "visible": true, "locked": false, "fontSize": 22, "fontFamily": "Arial", "fontWeight": "normal", "color": "#333333", "textAlign": "center", "wordWrap": false}, {"id": "grade-1", "type": "text", "name": "Grade & Section", "field": "grade_level", "text": "Grade 7 - Einstein", "x": 50, "y": 550, "width": 491, "height": 25, "zIndex": 4, "visible": true, "locked": false, "fontSize": 18, "fontFamily": "Arial", "fontWeight": "normal", "color": "#555555", "textAlign": "center", "wordWrap": false}]}'
-                student_back = '{"layers": [{"id": "lrn-1", "type": "text", "name": "LRN", "field": "lrn", "text": "LRN: 123456789012", "x": 50, "y": 100, "width": 491, "height": 30, "zIndex": 1, "visible": true, "locked": false, "fontSize": 16, "fontFamily": "Arial", "fontWeight": "normal", "color": "#000000", "textAlign": "left", "wordWrap": false}, {"id": "guardian-1", "type": "text", "name": "Guardian", "field": "guardian_name", "text": "Guardian: PARENT NAME", "x": 50, "y": 140, "width": 491, "height": 30, "zIndex": 2, "visible": true, "locked": false, "fontSize": 14, "fontFamily": "Arial", "fontWeight": "normal", "color": "#333333", "textAlign": "left", "wordWrap": true}, {"id": "address-1", "type": "text", "name": "Address", "field": "address", "text": "Address Line Here", "x": 50, "y": 180, "width": 491, "height": 50, "zIndex": 3, "visible": true, "locked": false, "fontSize": 12, "fontFamily": "Arial", "fontWeight": "normal", "color": "#333333", "textAlign": "left", "wordWrap": true}, {"id": "contact-1", "type": "text", "name": "Emergency Contact", "field": "emergency_contact", "text": "Emergency: 09171234567", "x": 50, "y": 240, "width": 491, "height": 25, "zIndex": 4, "visible": true, "locked": false, "fontSize": 14, "fontFamily": "Arial", "fontWeight": "normal", "color": "#333333", "textAlign": "left", "wordWrap": false}, {"id": "qr-1", "type": "qr_code", "name": "QR Code", "field": "id_number", "x": 220, "y": 700, "width": 150, "height": 150, "zIndex": 5, "visible": true, "locked": false, "backgroundColor": "#FFFFFF", "foregroundColor": "#000000"}]}'
+                student_back = '{"layers": [{"id": "lrn-1", "type": "text", "name": "LRN", "field": "lrn", "text": "LRN: 123456789012", "x": 50, "y": 100, "width": 491, "height": 30, "zIndex": 1, "visible": true, "locked": false, "fontSize": 16, "fontFamily": "Arial", "fontWeight": "normal", "color": "#000000", "textAlign": "left", "wordWrap": false}, {"id": "guardian-1", "type": "text", "name": "Guardian", "field": "guardian_name", "text": "Guardian: PARENT NAME", "x": 50, "y": 140, "width": 491, "height": 30, "zIndex": 2, "visible": true, "locked": false, "fontSize": 14, "fontFamily": "Arial", "fontWeight": "normal", "color": "#333333", "textAlign": "left", "wordWrap": true}, {"id": "address-1", "type": "text", "name": "Address", "field": "address", "text": "Address Line Here", "x": 50, "y": 180, "width": 491, "height": 50, "zIndex": 3, "visible": true, "locked": false, "fontSize": 12, "fontFamily": "Arial", "fontWeight": "normal", "color": "#333333", "textAlign": "left", "wordWrap": true}, {"id": "contact-1", "type": "text", "name": "Emergency Contact", "field": "emergency_contact", "text": "Emergency: 09171234567", "x": 50, "y": 240, "width": 491, "height": 25, "zIndex": 4, "visible": true, "locked": false, "fontSize": 14, "fontFamily": "Arial", "fontWeight": "normal", "color": "#333333", "textAlign": "left", "wordWrap": false}, {"id": "qr-1", "type": "qr_code", "name": "QR Code", "field": "lrn", "x": 220, "y": 700, "width": 150, "height": 150, "zIndex": 5, "visible": true, "locked": false, "backgroundColor": "#FFFFFF", "foregroundColor": "#000000"}]}'
                 
                 teacher_canvas = '{"width": 591, "height": 1004, "backgroundColor": "#FFFFFF", "backgroundImage": null}'
                 teacher_front = '{"layers": [{"id": "photo-1", "type": "image", "name": "Photo", "field": "photo", "x": 196, "y": 180, "width": 200, "height": 250, "zIndex": 1, "visible": true, "locked": false, "objectFit": "cover", "borderRadius": 8}, {"id": "name-1", "type": "text", "name": "Full Name", "field": "full_name", "text": "TEACHER NAME", "x": 50, "y": 460, "width": 491, "height": 40, "zIndex": 2, "visible": true, "locked": false, "fontSize": 28, "fontFamily": "Arial", "fontWeight": "bold", "color": "#000000", "textAlign": "center", "wordWrap": false, "uppercase": true}, {"id": "position-1", "type": "text", "name": "Position", "field": "position", "text": "Teacher", "x": 50, "y": 510, "width": 491, "height": 30, "zIndex": 3, "visible": true, "locked": false, "fontSize": 22, "fontFamily": "Arial", "fontWeight": "normal", "color": "#333333", "textAlign": "center", "wordWrap": false}]}'
@@ -543,6 +552,55 @@ class DatabaseManager:
                     False, True, False,
                     teacher_canvas, teacher_front, teacher_back
                 ))
+            
+            # Migration: Update existing student templates to use 'lrn' instead of 'id_number' for QR layers
+            try:
+                import json
+                cursor.execute("SELECT id, front_layers, back_layers FROM id_templates WHERE template_type = 'student'")
+                student_templates = cursor.fetchall()
+                for row in student_templates:
+                    tid = row[0]
+                    front_str = row[1]
+                    back_str = row[2]
+                    
+                    updated = False
+                    
+                    # Process front layers
+                    if front_str:
+                        try:
+                            front_data = json.loads(front_str)
+                            layers = front_data.get('layers', [])
+                            for layer in layers:
+                                if layer.get('type') == 'qr_code' and layer.get('field') == 'id_number':
+                                    layer['field'] = 'lrn'
+                                    updated = True
+                            if updated:
+                                front_str = json.dumps(front_data)
+                        except Exception as e:
+                            logger.error(f"Error parsing front_layers for template {tid}: {e}")
+                            
+                    # Process back layers
+                    if back_str:
+                        try:
+                            back_data = json.loads(back_str)
+                            layers = back_data.get('layers', [])
+                            for layer in layers:
+                                if layer.get('type') == 'qr_code' and layer.get('field') == 'id_number':
+                                    layer['field'] = 'lrn'
+                                    updated = True
+                            if updated:
+                                back_str = json.dumps(back_data)
+                        except Exception as e:
+                            logger.error(f"Error parsing back_layers for template {tid}: {e}")
+                            
+                    if updated:
+                        cursor.execute(
+                            "UPDATE id_templates SET front_layers = %s, back_layers = %s WHERE id = %s",
+                            (front_str, back_str, tid)
+                        )
+                        logger.info(f"Migrated template {tid} to use 'lrn' for student QR code layer")
+            except Exception as e:
+                logger.error(f"Error migrating student templates: {e}")
             
             cursor.close()
             logger.info("Database schema initialized successfully")

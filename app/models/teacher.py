@@ -59,13 +59,15 @@ class TeacherCreateRequest(BaseModel):
     blood_type: Optional[str] = Field(default="", max_length=10, description="Blood type")
     hire_date: Optional[date] = Field(default=None, description="Date of hire")
     employment_status: Optional[str] = Field(default="active", description="Employment status")
+    school: Optional[str] = Field(default="", max_length=100, description="School name")
+    entry_type: Optional[str] = Field(default="manual", max_length=20, description="Source type (manual or import)")
     
     @field_validator("employee_id")
     @classmethod
     def validate_id(cls, v: str) -> str:
         return validate_employee_id_format(v)
     
-    @field_validator("full_name", "department", "position", "emergency_contact_name")
+    @field_validator("full_name", "department", "position", "emergency_contact_name", "school")
     @classmethod
     def sanitize_names(cls, v: str) -> str:
         return sanitize_string(v).upper() if v else ""
@@ -75,7 +77,7 @@ class TeacherCreateRequest(BaseModel):
     def sanitize_text(cls, v: str) -> str:
         return sanitize_string(v) if v else ""
     
-    @field_validator("contact_number", "emergency_contact_number")
+    @field_validator("contact_number", "emergency_contact_number", "entry_type")
     @classmethod
     def sanitize_contacts(cls, v: str) -> str:
         return sanitize_string(v) if v else ""
@@ -98,8 +100,10 @@ class TeacherUpdateRequest(BaseModel):
     blood_type: Optional[str] = Field(default=None, max_length=10)
     hire_date: Optional[date] = Field(default=None)
     employment_status: Optional[str] = Field(default=None)
+    school: Optional[str] = Field(default=None, max_length=100)
+    entry_type: Optional[str] = Field(default=None, max_length=20)
     
-    @field_validator("full_name", "department", "position", "emergency_contact_name")
+    @field_validator("full_name", "department", "position", "emergency_contact_name", "school")
     @classmethod
     def sanitize_names(cls, v: Optional[str]) -> Optional[str]:
         return sanitize_string(v).upper() if v else v
@@ -148,6 +152,8 @@ class TeacherResponse(BaseModel):
     blood_type: str = ""
     hire_date: Optional[date] = None
     employment_status: str = "active"
+    school: str = ""
+    entry_type: str = "import"
     photo_path: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -206,6 +212,6 @@ class TeacherGenerationHistoryResponse(BaseModel):
             position=row.get("position") or "",
             file_path=row.get("file_path"),
             timestamp=row.get("timestamp"),
-            front_image=f"/output/{employee_id}_FRONT.png" if employee_id else None,
-            back_image=f"/output/{employee_id}_BACK.png" if employee_id else None,
+            front_image=f"/output/front-id/{employee_id}.png" if employee_id else None,
+            back_image=f"/output/back0id/{employee_id}.png" if employee_id else None,
         )

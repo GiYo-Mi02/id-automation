@@ -27,6 +27,8 @@ export default function CapturePage() {
     employee_id: '',
     full_name: '',
     lrn_number: '',
+    lrn: '',
+    school: '',
     grade_level: '',
     section: '',
     department: '',
@@ -42,6 +44,7 @@ export default function CapturePage() {
   const [recentCaptures, setRecentCaptures] = useState([])
   const [modalData, setModalData] = useState(null)
   const [successData, setSuccessData] = useState(null) // For success modal
+  const [countdown, setCountdown] = useState(null)
 
   // Reset modal states on mount and cleanup on unmount
   useEffect(() => {
@@ -204,6 +207,7 @@ export default function CapturePage() {
       // Add manual data if in manual mode
       if (inputMode === 'manual') {
         formData.append('manual_name', entityData.full_name || '')
+        formData.append('manual_school', entityData.school || '')
         
         if (entityType === 'student') {
           formData.append('manual_grade', entityData.grade_level || '')
@@ -211,6 +215,7 @@ export default function CapturePage() {
           formData.append('manual_guardian', entityData.guardian_name || '')
           formData.append('manual_address', entityData.address || '')
           formData.append('manual_contact', entityData.contact_number || entityData.guardian_contact || '')
+          formData.append('manual_lrn', entityData.lrn_number || entityData.lrn || '')
         } else {
           formData.append('manual_department', entityData.department || '')
           formData.append('manual_position', entityData.position || '')
@@ -233,6 +238,77 @@ export default function CapturePage() {
       setIsCapturing(false)
     }
   }, [inputMode, entityType, selectedStudent, selectedTeacher, selectedStaff, manualData, isCapturing, toast])
+
+  const startCountdown = useCallback(() => {
+    if (isCapturing || countdown !== null) return
+
+    // Get the selected entity data based on entity type
+    let entityData
+    if (inputMode === 'database') {
+      switch (entityType) {
+        case 'teacher':
+          entityData = selectedTeacher
+          break
+        case 'staff':
+          entityData = selectedStaff
+          break
+        default:
+          entityData = selectedStudent
+      }
+    } else {
+      entityData = manualData
+    }
+    
+    const entityId = entityData?.id_number || entityData?.employee_id || entityData?.student_id
+    
+    // Check if we're in teacher/staff mode (they can be identified by scanned ID only)
+    const isEmployeeMode = entityType === 'teacher' || entityType === 'staff'
+    
+    // For students: require full data selection
+    // For teachers/staff: allow capture with just an ID (from QR/OCR scan)
+    if (!isEmployeeMode && (!entityData || !entityId || !entityData.full_name)) {
+      toast.warning('Missing Data', 'Please select or enter student information first')
+      return
+    }
+    
+    // For teachers/staff, if we have an entity ID, we can proceed (data will be fetched from DB)
+    if (isEmployeeMode && !entityId) {
+      const entityLabel = entityType === 'teacher' ? 'teacher' : 'staff'
+      toast.warning('Missing Data', `Please scan ${entityLabel} ID or enter ${entityLabel} information first`)
+      return
+    }
+
+    // Check for duplicate photo (prevent overwriting existing photos)
+    if (entityData && entityData.photo_path) {
+      const entityLabel = entityType === 'student' ? 'Student' : entityType === 'teacher' ? 'Teacher' : 'Staff member'
+      toast.error(
+        'Photo Already Exists', 
+        `${entityLabel} "${entityData.full_name}" already has a photo. Delete the old photo first or select a different person.`
+      )
+      return
+    }
+
+    setCountdown(3)
+  }, [inputMode, entityType, selectedStudent, selectedTeacher, selectedStaff, manualData, isCapturing, countdown, toast])
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (countdown === null) return
+
+    if (countdown === 0) {
+      setCountdown(null)
+      // Trigger capture request event
+      const event = new CustomEvent('capture-request')
+      window.dispatchEvent(event)
+      return
+    }
+
+    const timer = setTimeout(() => {
+      setCountdown(prev => (prev !== null ? prev - 1 : null))
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [countdown])
 
   const handleViewCapture = (capture) => {
     setModalData(capture)
@@ -257,6 +333,7 @@ export default function CapturePage() {
                 showGuide={showGuide}
                 onCapture={handleCapture}
                 isCapturing={isCapturing}
+                countdown={countdown}
               />
             </div>
 
@@ -278,6 +355,8 @@ export default function CapturePage() {
                 onManualDataChange={setManualData}
                 onCapture={handleCapture}
                 isCapturing={isCapturing}
+                countdown={countdown}
+                onStartCountdown={startCountdown}
               />
             </div>
           </div>

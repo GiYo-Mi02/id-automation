@@ -134,6 +134,8 @@ class SchoolIDProcessor:
                     # Common additional fields
                     'address': str(data.get('address', '')),
                     'emergency_contact': str(data.get('emergency_contact', data.get('guardian_contact', data.get('contact_number', '')))),
+                    'emergency_contact_name': str(data.get('emergency_contact_name', data.get('emergency_contact', ''))),
+                    'emergency_contact_number': str(data.get('emergency_contact_number', '')),
                     'contact_number': str(data.get('contact_number', data.get('guardian_contact', ''))),
                     'birth_date': str(data.get('birth_date', data.get('date_of_birth', ''))),
                     'blood_type': str(data.get('blood_type', '')),
@@ -191,6 +193,8 @@ class SchoolIDProcessor:
                 'address': str(employee.get('address', '') or ''),
                 'contact_number': str(employee.get('contact_number', '') or ''),
                 'emergency_contact': str(employee.get('emergency_contact_name', '') or ''),
+                'emergency_contact_name': str(employee.get('emergency_contact_name', '') or ''),
+                'emergency_contact_number': str(employee.get('emergency_contact_number', '') or ''),
                 'birth_date': str(employee.get('birth_date', '') or ''),
                 'blood_type': str(employee.get('blood_type', '') or ''),
                 'school_year': '2025-2026',
@@ -329,8 +333,22 @@ class SchoolIDProcessor:
                 try:
                     front_card, back_card = self._render_with_layers(data, img_final)
                     if front_card and back_card:
-                        front_path = Path(self.config['OUTPUT_FOLDER']) / f"{data['id']}_FRONT.png"
-                        back_path = Path(self.config['OUTPUT_FOLDER']) / f"{data['id']}_BACK.png"
+                        # Determine base filename based on entity type and LRN presence
+                        if data.get('type') == 'student':
+                            filename_base = data.get('lrn', '').strip()
+                            if not filename_base:
+                                filename_base = data['id']
+                        else:
+                            filename_base = data['id']
+                            
+                        front_id_dir = Path(self.config['OUTPUT_FOLDER']) / 'front-id'
+                        back_id_dir = Path(self.config['OUTPUT_FOLDER']) / 'back0id'
+                        front_id_dir.mkdir(parents=True, exist_ok=True)
+                        back_id_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        front_path = front_id_dir / f"{filename_base}.png"
+                        back_path = back_id_dir / f"{filename_base}.png"
+                        
                         front_card.filter(ImageFilter.SHARPEN).save(front_path)
                         back_card.save(back_path)
                         database.log_generation(data['id'], front_path)
@@ -405,7 +423,22 @@ class SchoolIDProcessor:
                     config = front_layout[key].copy()
                     self.draw_text(draw, data.get(key, ''), config, self.config['CARD_SIZE'][0])
     
-            front_path = Path(self.config['OUTPUT_FOLDER']) / f"{data['id']}_FRONT.png"
+            # Determine base filename based on entity type and LRN presence
+            if data.get('type') == 'student':
+                filename_base = data.get('lrn', '').strip()
+                if not filename_base:
+                    filename_base = data['id']
+            else:
+                filename_base = data['id']
+                
+            front_id_dir = Path(self.config['OUTPUT_FOLDER']) / 'front-id'
+            back_id_dir = Path(self.config['OUTPUT_FOLDER']) / 'back0id'
+            front_id_dir.mkdir(parents=True, exist_ok=True)
+            back_id_dir.mkdir(parents=True, exist_ok=True)
+            
+            front_path = front_id_dir / f"{filename_base}.png"
+            back_path = back_id_dir / f"{filename_base}.png"
+            
             card.filter(ImageFilter.SHARPEN).save(front_path)
     
             # --- BACK CARD ---
@@ -421,7 +454,6 @@ class SchoolIDProcessor:
                 if key in layout.get('back', {}):
                     self.draw_text(draw_b, data.get(key, ''), layout['back'][key], self.config['CARD_SIZE'][0])
     
-            back_path = Path(self.config['OUTPUT_FOLDER']) / f"{data['id']}_BACK.png"
             back.save(back_path)
     
             database.log_generation(data['id'], front_path)

@@ -55,16 +55,20 @@ class StudentService:
         student_id = student_data.get("id_number")
         if not student_id:
             return student_data
+            
+        # For students: file name is LRN if exists, else id_number
+        lrn = student_data.get("lrn")
+        filename_base = lrn if lrn else student_id
         
         # Check if output files exist
         output_dir = Path(self.settings.paths.data_dir) / "output"
-        front_file = output_dir / f"{student_id}_FRONT.png"
-        back_file = output_dir / f"{student_id}_BACK.png"
+        front_file = output_dir / "front-id" / f"{filename_base}.png"
+        back_file = output_dir / "back0id" / f"{filename_base}.png"
         
         if front_file.exists():
-            student_data["front_image"] = f"/output/{student_id}_FRONT.png"
+            student_data["front_image"] = f"/output/front-id/{filename_base}.png"
         if back_file.exists():
-            student_data["back_image"] = f"/output/{student_id}_BACK.png"
+            student_data["back_image"] = f"/output/back0id/{filename_base}.png"
         
         return student_data
     
@@ -72,26 +76,28 @@ class StudentService:
     # STUDENT CRUD
     # =========================================================================
     
-    def get_all_students(self, page: int = 1, page_size: int = 50, sort_by: str = "created_at", sort_order: str = "DESC", section: str = None) -> StudentListResponse:
+    def get_all_students(self, page: int = 1, page_size: int = 50, sort_by: str = "created_at", sort_order: str = "DESC", section: str = None, school: str = None, search: str = None) -> StudentListResponse:
         """
         Get paginated list of students with sorting and filtering.
         
         Args:
             page: Page number (1-indexed)
-            page_size: Items per page (max 100)
-            sort_by: Column to sort by (created_at, id_number, full_name, section)
+            page_size: Items per page (max 10000)
+            sort_by: Column to sort by (created_at, id_number, full_name, section, school)
             sort_order: Sort direction (ASC or DESC)
             section: Filter by section (optional)
+            school: Filter by school (optional)
+            search: Search query (optional)
         
         Returns:
             StudentListResponse with students and pagination info
         """
         page = max(1, page)
-        page_size = min(max(1, page_size), 100)
+        page_size = min(max(1, page_size), 10000)
         offset = (page - 1) * page_size
         
         # Validate sort parameters
-        valid_sort_columns = ["created_at", "id_number", "full_name", "section", "grade_level"]
+        valid_sort_columns = ["created_at", "id_number", "full_name", "section", "grade_level", "school"]
         if sort_by not in valid_sort_columns:
             sort_by = "created_at"
         
@@ -102,12 +108,21 @@ class StudentService:
         with self.db.get_connection() as conn:
             cursor = conn.cursor(dictionary=True)
             
-            # Build WHERE clause for filtering
-            where_clause = ""
+            # Build WHERE clauses for filtering
+            where_clauses = []
             params = []
             if section:
-                where_clause = "WHERE section = %s"
+                where_clauses.append("section = %s")
                 params.append(section)
+            if school:
+                where_clauses.append("school = %s")
+                params.append(school)
+            if search:
+                where_clauses.append("(id_number LIKE %s OR full_name LIKE %s OR section LIKE %s OR lrn LIKE %s)")
+                search_param = f"%{search}%"
+                params.extend([search_param, search_param, search_param, search_param])
+                
+            where_clause = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
             
             # Get total count
             count_query = f"SELECT COUNT(*) as total FROM students {where_clause}"
@@ -117,7 +132,7 @@ class StudentService:
             # Get paginated results with sorting
             query = f"""
                 SELECT id_number, full_name, lrn, grade_level, section,
-                       guardian_name, address, guardian_contact,
+                       guardian_name, address, guardian_contact, school, entry_type,
                        created_at, updated_at
                 FROM students
                 {where_clause}
@@ -155,7 +170,7 @@ class StudentService:
             cursor.execute(
                 """
                 SELECT id_number, full_name, lrn, grade_level, section,
-                       guardian_name, address, guardian_contact,
+                       guardian_name, address, guardian_contact, school, entry_type,
                        created_at, updated_at
                 FROM students
                 WHERE id_number = %s
@@ -200,13 +215,14 @@ class StudentService:
                 """
                 INSERT INTO students
                 (id_number, full_name, lrn, grade_level, section,
-                 guardian_name, address, guardian_contact, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 guardian_name, address, guardian_contact, school, entry_type, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     data.id_number, data.full_name, data.lrn,
                     data.grade_level, data.section, data.guardian_name,
-                    data.address, data.guardian_contact, now, now
+                    data.address, data.guardian_contact, data.school or "",
+                    data.entry_type or "manual", now, now
                 )
             )
         
@@ -299,7 +315,7 @@ class StudentService:
             cursor.execute(
                 """
                 SELECT id_number, full_name, lrn, grade_level, section,
-                       guardian_name, address, guardian_contact,
+                       guardian_name, address, guardian_contact, school, entry_type,
                        created_at, updated_at
                 FROM students
                 WHERE id_number LIKE %s
@@ -393,7 +409,7 @@ class StudentService:
         Returns:
             HistoryListResponse
         """
-        limit = min(max(1, limit), 200)
+        limit = min(max(1, limit), 10000)
         
         with self.db.get_connection() as conn:
             cursor = conn.cursor(dictionary=True)
@@ -415,6 +431,7 @@ class StudentService:
                     COALESCE(s.address, h.address) as address,
                     COALESCE(s.guardian_contact, h.guardian_contact) as guardian_contact,
                     s.grade_level,
+                    COALESCE(s.school, t.school, st.school) as school,
                     CASE 
                         WHEN s.id_number IS NOT NULL THEN 'student'
                         WHEN t.employee_id IS NOT NULL THEN 'teacher'

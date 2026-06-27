@@ -56,10 +56,12 @@ router = APIRouter(
 )
 async def list_students(
     page: int = Query(default=1, ge=1, description="Page number"),
-    page_size: int = Query(default=50, ge=1, le=100, description="Items per page"),
+    page_size: int = Query(default=50, ge=1, le=10000, description="Items per page"),
     sort_by: str = Query(default="created_at", description="Sort column (created_at, id_number, full_name, section)"),
     sort_order: str = Query(default="DESC", description="Sort order (ASC or DESC)"),
     section: str = Query(default=None, description="Filter by section"),
+    school: str = Query(default=None, description="Filter by school"),
+    search: str = Query(default=None, description="Search query"),
     service: StudentService = Depends(get_student_service)
 ):
     """Get paginated list of all students with sorting and filtering."""
@@ -68,7 +70,9 @@ async def list_students(
         page_size=page_size,
         sort_by=sort_by,
         sort_order=sort_order,
-        section=section
+        section=section,
+        school=school,
+        search=search
     )
 
 
@@ -90,6 +94,86 @@ async def search_students(
         query=q,
         total=len(results)
     )
+
+
+@router.get(
+    "/export",
+    summary="Export students to CSV",
+    description="Download a CSV file containing all student records."
+)
+async def export_students(
+    service: StudentService = Depends(get_student_service)
+):
+    """Export all student records to a CSV file."""
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+    try:
+        # Fetch all students from the database
+        with service.db.get_connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("""
+                SELECT id_number, full_name, lrn, grade_level, section,
+                       guardian_name, address, guardian_contact, birth_date,
+                       blood_type, emergency_contact, emergency_contact_number,
+                       school_year, status, school, entry_type, created_at
+                FROM students
+                ORDER BY created_at DESC
+            """)
+            students = cursor.fetchall()
+            cursor.close()
+            
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write headers
+        headers = [
+            "id_number", "full_name", "lrn", "grade_level", "section",
+            "guardian_name", "address", "guardian_contact", "birth_date",
+            "blood_type", "emergency_contact", "emergency_contact_number",
+            "school_year", "status", "school", "entry_type", "created_at"
+        ]
+        writer.writerow(headers)
+        
+        # Write data rows
+        for s in students:
+            # Format birth_date and created_at if they exist
+            birth_date = s["birth_date"].isoformat() if s["birth_date"] else ""
+            created_at = s["created_at"].isoformat() if s["created_at"] else ""
+            
+            writer.writerow([
+                s["id_number"] or "",
+                s["full_name"] or "",
+                s["lrn"] or "",
+                s["grade_level"] or "",
+                s["section"] or "",
+                s["guardian_name"] or "",
+                s["address"] or "",
+                s["guardian_contact"] or "",
+                birth_date,
+                s["blood_type"] or "",
+                s["emergency_contact"] or "",
+                s["emergency_contact_number"] or "",
+                s["school_year"] or "",
+                s["status"] or "",
+                s["school"] or "",
+                s["entry_type"] or "",
+                created_at
+            ])
+            
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=students_export.csv"}
+        )
+    except Exception as e:
+        logger.error(f"Failed to export students: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to export students: {str(e)}"
+        )
 
 
 @router.get(
@@ -194,7 +278,7 @@ history_router = APIRouter(
     description="Get recent ID generation history."
 )
 async def get_history(
-    limit: int = Query(default=50, ge=1, le=200, description="Maximum records"),
+    limit: int = Query(default=50, ge=1, le=10000, description="Maximum records"),
     service: StudentService = Depends(get_student_service)
 ):
     """Get recent ID generation history."""
